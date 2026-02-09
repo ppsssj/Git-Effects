@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Git Effects icon (dark)">
+  <rect x="10" y="10" width="108" height="108" rx="22" fill="#0B1220"/>
+
+  <g fill="none" stroke="#E5E7EB" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M44 92 V60 C44 54 48 50 54 50 H72" />
+    <path d="M72 50 C78 50 82 46 82 40 V32" />
+
+    <path d="M92 86 V54" />
+    <path d="M92 54 L84 62" />
+    <path d="M92 54 L100 62" />
+    <path d="M92 86 L84 78" />
+    <path d="M92 86 L100 78" />
+
+    <path d="M96 32 L96 24" />
+    <path d="M96 32 L104 32" />
+    <path d="M96 32 L90 26" />
+  </g>
+
+  <g fill="#22C55E">
+    <circle cx="44" cy="92" r="7"/>
+    <circle cx="44" cy="60" r="7"/>
+    <circle cx="82" cy="32" r="7"/>
+  </g>
+</svg>

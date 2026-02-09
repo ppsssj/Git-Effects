@@ -1,0 +1,83 @@
+{
+  "name": "git-effects",
+  "displayName": "Git Effects",
+  "description": "Git push/pull/commit effects (success/failure) with animated panel.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "icon": "assets/icon.png",
+  "categories": ["Other"],
+  "extensionDependencies": ["vscode.git"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "git-effects.helloWorld", "title": "Git Effects: Manual Effect" },
+      { "command": "git-effects.push", "title": "Git Effects: Push (accurate mode)" },
+      { "command": "git-effects.pull", "title": "Git Effects: Pull (accurate mode)" },
+      { "command": "git-effects.commit", "title": "Git Effects: Commit (accurate mode)" }
+    ],
+    "configuration": {
+      "title": "Git Effects",
+      "properties": {
+        "gitEffects.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Git Effects UI."
+        },
+        "gitEffects.pollMs": {
+          "type": "number",
+          "default": 500,
+          "minimum": 200,
+          "description": "Auto-detect poll interval (ms)."
+        },
+        "gitEffects.cooldownMs": {
+          "type": "number",
+          "default": 1200,
+          "minimum": 0,
+          "description": "Minimum time between effects (ms)."
+        },
+        "gitEffects.durationMs": {
+          "type": "number",
+          "default": 2200,
+          "minimum": 800,
+          "description": "Panel auto-close delay (ms)."
+        },
+        "gitEffects.autoPush": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-detect push success (ahead > 0 -> 0)."
+        },
+        "gitEffects.autoPull": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-detect pull success (behind > 0 -> 0)."
+        },
+        "gitEffects.autoCommit": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-detect commit completion (heuristic)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.109.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.54.0",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}

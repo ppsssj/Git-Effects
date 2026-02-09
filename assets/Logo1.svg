@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Git Effects icon (light)">
+  <!-- Background -->
+  <rect x="10" y="10" width="108" height="108" rx="22" fill="#F6F8FA"/>
+
+  <!-- Mark -->
+  <g fill="none" stroke="#111827" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Git-like branch (centered, strong silhouette) -->
+    <path d="M44 92 V60 C44 54 48 50 54 50 H72" />
+    <path d="M72 50 C78 50 82 46 82 40 V32" />
+
+    <!-- Arrow pair (push/pull) on the right -->
+    <path d="M92 86 V54" />
+    <path d="M92 54 L84 62" />
+    <path d="M92 54 L100 62" />
+    <path d="M92 86 L84 78" />
+    <path d="M92 86 L100 78" />
+
+    <!-- Pulse / burst accent near the branch merge -->
+    <path d="M96 32 L96 22" />
+    <path d="M96 32 L106 32" />
+    <path d="M96 32 L88 24" />
+    <path d="M96 32 L104 24" />
+  </g>
+
+  <!-- Nodes (neon green) -->
+  <g fill="#00E676">
+    <circle cx="44" cy="92" r="7.5"/>
+    <circle cx="44" cy="60" r="7.5"/>
+    <circle cx="82" cy="32" r="7.5"/>
+  </g>
+</svg>

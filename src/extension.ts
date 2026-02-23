@@ -375,9 +375,11 @@ meta.textContent = payload.repoPath
     let followTarget = new THREE.Vector3(0, 0, 0);
     let hasTarget = false;
 
-    const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
-camera.position.set(0, 1.05, 3.1);
-camera.lookAt(0, 0.25, 0);
+    // NOTE: Camera is dynamically re-framed after the model loads.
+    // Keep a sane default so the scene isn't blank during the first frame.
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+    camera.position.set(0, 1.1, 3.0);
+    camera.lookAt(0, 0.35, 0);
     scene.add(new THREE.AmbientLight(0xffffff, 0.78));
     const key = new THREE.DirectionalLight(0xffffff, 1.0);
     key.position.set(2, 4, 3);
@@ -441,6 +443,27 @@ camera.lookAt(0, 0.25, 0);
       return { center, sphere, dist };
     }
 
+    // ===== Action System (A: static OBJ reactions) =====
+    // NOTE: Must be in the top-level scope of the webview script.
+    // If declared inside loadModel(), tick() can't see it and you'll get:
+    //   ReferenceError: base is not defined
+    const ActionType = {
+      IDLE: "idle",
+      COMMIT: "commit",
+      PUSH_OK: "pushOk",
+      ERROR: "error",
+    };
+
+    let base = null; // { pos, rot, scale }
+
+    function setBaseFromModel(m){
+      base = {
+        pos: m.position.clone(),
+        rot: m.rotation.clone(),
+        scale: m.scale.clone(),
+      };
+    }
+
     async function loadModel(){
       const mtlLoader = new MTLLoader();
       mtlLoader.setResourcePath("${modelBase}");
@@ -453,55 +476,34 @@ camera.lookAt(0, 0.25, 0);
       objLoader.setMaterials(materials);
       objLoader.setPath("${modelBase}");
       model = await objLoader.loadAsync("character-male-d.obj");
-// 모델을 원점에 정렬(기존 로직 유지)
-const box = new THREE.Box3().setFromObject(model);
-const center = box.getCenter(new THREE.Vector3());
-model.position.sub(center); // center to origin
 
-// 바닥으로 내림(기존 유지)
-model.position.set(0, -0.95, 0);
-model.rotation.y = 0;
-model.scale.setScalar(1.25);
-scene.add(model);
-// ===== Action System (A: static OBJ reactions) =====
-const ActionType = {
-  IDLE: "idle",
-  COMMIT: "commit",
-  PUSH_OK: "pushOk",
-  ERROR: "error",
-};
+      // --- Robust placement ---
+      // 1) Center the model to origin (prevents camera framing from being off)
+      const box0 = new THREE.Box3().setFromObject(model);
+      const center0 = box0.getCenter(new THREE.Vector3());
+      model.position.sub(center0);
 
-let base = null; // { pos, rot, scale }
-let action = { type: ActionType.IDLE, t0: performance.now(), dur: 999999 };
+      // 2) Put the model's feet on the ground plane (y = -0.95)
+      //    This is safer than hard-setting model.position.y, because different OBJ exports
+      //    can have different pivots.
+      const box1 = new THREE.Box3().setFromObject(model);
+      const minY = box1.min.y;
+      const groundY = -0.95;
+      model.position.y += (groundY - minY);
 
-function setBaseFromModel(m) {
-  base = {
-    pos: m.position.clone(),
-    rot: m.rotation.clone(),
-    scale: m.scale.clone(),
-  };
-}
+      model.rotation.y = 0;
+      model.scale.setScalar(1.25);
+      scene.add(model);
 
-function playAction(type) {
-  const now = performance.now();
-  const durMap = {
-    [ActionType.COMMIT]: 900,
-    [ActionType.PUSH_OK]: 1500,
-    [ActionType.ERROR]: 1700,
-    [ActionType.IDLE]: 999999,
-  };
-  action = { type, t0: now, dur: durMap[type] ?? 1200 };
-}
-
-// 모델 로드 성공 후 딱 1번
-setBaseFromModel(model);
-playAction(ActionType.IDLE);
-// ✅ 자동 프레이밍: viewDir.y를 낮추면 카메라가 더 내려갑니다.
-frameObjectToCamera(model, camera, {
-  fitOffset: 1.25,
-  viewDir: new THREE.Vector3(0, 0.05, 1), // <-- 여기 y가 "카메라 높이 감"
-  targetYOffset: -0.15                    // <-- 모델이 아래로 내려가 있으니 타겟도 살짝 내림
-});
+      // 모델 로드 성공 후 딱 1번 (tick()에서 base 기준으로 모션 계산)
+      setBaseFromModel(model);
+      // ✅ Auto-frame the camera based on the true bounding box.
+      // If you still can't see the character, increase fitOffset to ~1.45.
+      frameObjectToCamera(model, camera, {
+        fitOffset: 1.30,
+        viewDir: new THREE.Vector3(0, 0.18, 1),
+        targetYOffset: 0.10,
+      });
     }
 
     loadModel().catch((err) => {
@@ -510,12 +512,38 @@ frameObjectToCamera(model, camera, {
       hud.classList.add('show');
     });
 
-    const state = { phase: 'idle', t0: performance.now(), kind: 'info', event: 'manual' };
+    // ===== Runtime Animation State =====
+    // Keep the existing enter/exit slide so the panel still "arrives".
+    // The "act" phase differs per situation (Commit / Push success / Error).
+    const state = {
+      phase: 'idle',
+      t0: performance.now(),
+      kind: 'info',
+      event: 'manual',
+      actMs: 900,
+    };
+
     function startAnim(kind, event){
       state.kind = kind || 'info';
       state.event = event || 'manual';
+
+      // Priority: error kind always uses fail signature.
+      if (state.kind === 'error') state.actMs = 1700;            // 1.4~1.8s
+      else if (state.event === 'commit') state.actMs = 780;      // 0.6~0.9s
+      else if (state.event === 'push') state.actMs = 1450;       // 1.2~1.6s
+      else state.actMs = 950;                                    // default
+
       state.phase = 'enter';
       state.t0 = performance.now();
+    }
+
+    function clamp01(x){ return Math.min(1, Math.max(0, x)); }
+    function lerp(a,b,t){ return a + (b-a)*t; }
+    function easeOutCubic(t){ t = clamp01(t); return 1 - Math.pow(1-t, 3); }
+    function easeInOutSine(t){ t = clamp01(t); return -(Math.cos(Math.PI*t) - 1) / 2; }
+    function smoothstep(e0, e1, x){
+      const t = clamp01((x - e0) / (e1 - e0));
+      return t * t * (3 - 2 * t);
     }
 
     function tick(now){
@@ -523,36 +551,102 @@ frameObjectToCamera(model, camera, {
       if (!model) { renderer.render(scene, camera); return; }
       const t = now - state.t0;
 
+      // Always start from the base transform to prevent drift.
+      if (base){
+        model.position.copy(base.pos);
+        model.rotation.set(base.rot.x, base.rot.y, base.rot.z);
+        model.scale.copy(base.scale);
+      }
+
       if (state.phase === 'enter'){
-        const tt = Math.min(1, t / 650);
-        model.position.x = THREE.MathUtils.lerp(2.2, 0.0, 1 - Math.pow(1-tt, 3));
-        model.rotation.z = Math.sin(tt * Math.PI * 2) * 0.06;
-        model.scale.y = 1.0 - Math.sin(tt * Math.PI) * 0.05;
+        const tt = clamp01(t / 520);
+        const e = easeOutCubic(tt);
+        model.position.x = lerp(2.2, base?.pos.x ?? 0.0, e);
+        model.rotation.z += Math.sin(tt * Math.PI * 2) * 0.05;
+        model.scale.y *= (1.0 - Math.sin(tt * Math.PI) * 0.04);
         if (tt >= 1){ state.phase = 'act'; state.t0 = now; }
       } else if (state.phase === 'act'){
+        const tt = clamp01(t / state.actMs);
+
+        // ---- Error / Fail signature ----
         if (state.kind === 'error'){
-          const tt = Math.min(1, t / 900);
-          model.rotation.y = Math.PI + Math.sin(tt * 18) * 0.08;
-          model.scale.y = THREE.MathUtils.lerp(1.0, 0.92, tt);
-          model.position.y = THREE.MathUtils.lerp(-0.95, -1.02, tt);
+          // Step back quickly, then shake "no" + slight crouch/shrink.
+          const step = easeOutCubic(clamp01(tt / 0.35));
+          model.position.z += lerp(0.0, -0.18, step);
+
+          const env = smoothstep(0.08, 0.22, tt) * (1 - smoothstep(0.86, 1.0, tt));
+          const shake = Math.sin(tt * Math.PI * 14) * 0.14 * env;
+          model.rotation.y += shake;
+          model.position.x += Math.sin(tt * Math.PI * 14) * 0.07 * env;
+
+          const shrink = easeOutCubic(tt);
+          model.scale.y *= lerp(1.0, 0.82, shrink);
+          model.scale.x *= lerp(1.0, 0.92, shrink);
+          model.scale.z *= lerp(1.0, 0.92, shrink);
+          model.position.y += lerp(0.0, -0.07, shrink);
+
           if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
-        } else if (state.event === 'commit'){
-          const tt = Math.min(1, t / 950);
-          const s = tt < 0.45
-            ? THREE.MathUtils.lerp(1.0, 0.90, tt/0.45)
-            : THREE.MathUtils.lerp(0.90, 1.05, (tt-0.45)/0.55);
-          model.scale.y = s;
-          model.rotation.x = -Math.sin(tt * Math.PI) * 0.10;
+        }
+
+        // ---- Commit: nod twice + very short forward "툭" ----
+        else if (state.event === 'commit'){
+          const env = Math.sin(Math.PI * tt); // 0..1..0
+          const nod = -Math.sin(tt * Math.PI * 4) * 0.12 * env; // 2 nods
+          model.rotation.x += nod;
+
+          // Forward impulse (towards camera = +z) with a tiny recoil.
+          const fwd1 = 0.16 * Math.exp(-Math.pow((tt - 0.18) / 0.11, 2));
+          const fwd2 = -0.04 * Math.exp(-Math.pow((tt - 0.40) / 0.10, 2));
+          model.position.z += (fwd1 + fwd2);
+
+          // Small squash on the "check".
+          model.scale.y *= (1.0 - 0.06 * env);
+          model.scale.x *= (1.0 + 0.03 * env);
+          model.scale.z *= (1.0 + 0.03 * env);
+
           if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
-        } else {
-          const tt = Math.min(1, t / 850);
-          model.position.y = -0.95 + Math.sin(tt * Math.PI) * 0.10;
-          model.rotation.x = -Math.sin(tt * Math.PI) * 0.08;
+        }
+
+        // ---- Push Success: jump + landing bounce + 180~360 spin ----
+        else if (state.event === 'push'){
+          const spin = THREE.MathUtils.degToRad(320); // ~320°
+          model.rotation.y += spin * easeOutCubic(tt);
+
+          const landT = 0.62;
+          if (tt <= landT){
+            const jt = tt / landT;
+            model.position.y += Math.sin(Math.PI * jt) * 0.34; // jump
+            // air stretch
+            model.scale.y *= (1.0 + 0.06 * Math.sin(Math.PI * jt));
+            model.scale.x *= (1.0 - 0.03 * Math.sin(Math.PI * jt));
+            model.scale.z *= (1.0 - 0.03 * Math.sin(Math.PI * jt));
+          } else {
+            const bt = (tt - landT) / (1 - landT);
+            const damp = Math.exp(-4.2 * bt);
+            const bounce = Math.sin(bt * Math.PI * 6) * 0.10 * damp;
+            model.position.y += bounce;
+
+            // landing squash
+            const squash = Math.max(0, Math.sin(bt * Math.PI)) * damp;
+            model.scale.y *= (1.0 - 0.10 * squash);
+            model.scale.x *= (1.0 + 0.06 * squash);
+            model.scale.z *= (1.0 + 0.06 * squash);
+          }
+
+          if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
+        }
+
+        // ---- Default / Pull / Manual: subtle pop ----
+        else {
+          const env = Math.sin(Math.PI * tt);
+          model.position.y += env * 0.10;
+          model.rotation.x += -env * 0.08;
           if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
         }
       } else if (state.phase === 'exit'){
-        const tt = Math.min(1, t / 500);
-        model.position.x = THREE.MathUtils.lerp(0.0, 2.2, tt);
+        const tt = clamp01(t / 480);
+        const e = easeInOutSine(tt);
+        model.position.x = lerp(base?.pos.x ?? 0.0, 2.2, e);
         model.rotation.z *= (1-tt);
         if (tt >= 1){ state.phase = 'idle'; }
       }

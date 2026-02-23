@@ -460,10 +460,42 @@ model.position.sub(center); // center to origin
 
 // 바닥으로 내림(기존 유지)
 model.position.set(0, -0.95, 0);
-model.rotation.y = Math.PI;
+model.rotation.y = 0;
 model.scale.setScalar(1.25);
 scene.add(model);
+// ===== Action System (A: static OBJ reactions) =====
+const ActionType = {
+  IDLE: "idle",
+  COMMIT: "commit",
+  PUSH_OK: "pushOk",
+  ERROR: "error",
+};
 
+let base = null; // { pos, rot, scale }
+let action = { type: ActionType.IDLE, t0: performance.now(), dur: 999999 };
+
+function setBaseFromModel(m) {
+  base = {
+    pos: m.position.clone(),
+    rot: m.rotation.clone(),
+    scale: m.scale.clone(),
+  };
+}
+
+function playAction(type) {
+  const now = performance.now();
+  const durMap = {
+    [ActionType.COMMIT]: 900,
+    [ActionType.PUSH_OK]: 1500,
+    [ActionType.ERROR]: 1700,
+    [ActionType.IDLE]: 999999,
+  };
+  action = { type, t0: now, dur: durMap[type] ?? 1200 };
+}
+
+// 모델 로드 성공 후 딱 1번
+setBaseFromModel(model);
+playAction(ActionType.IDLE);
 // ✅ 자동 프레이밍: viewDir.y를 낮추면 카메라가 더 내려갑니다.
 frameObjectToCamera(model, camera, {
   fitOffset: 1.25,

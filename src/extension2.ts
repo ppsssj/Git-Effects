@@ -333,8 +333,7 @@ function getHtml(webview: vscode.Webview) {
     import * as THREE from "${threeUri}";
     import { OBJLoader } from "${objLoaderUri}";
     import { MTLLoader } from "${mtlLoaderUri}";
-
-    console.log("[git-effects] webview script boot");
+  console.log("[git-effects] webview script boot");
     const hud = document.getElementById('hud');
     const title = document.getElementById('t');
     const meta = document.getElementById('m');
@@ -369,12 +368,6 @@ meta.textContent = payload.repoPath
     renderer.setPixelRatio(Math.max(1, window.devicePixelRatio || 1));
 
     const scene = new THREE.Scene();
-
-    // IMPORTANT: must be declared BEFORE any function that references them (resize/tick)
-    let model = null;
-    let followTarget = new THREE.Vector3(0, 0, 0);
-    let hasTarget = false;
-
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
 camera.position.set(0, 1.05, 3.1);
 camera.lookAt(0, 0.25, 0);
@@ -401,6 +394,10 @@ camera.lookAt(0, 0.25, 0);
     }
     window.addEventListener('resize', resize);
     resize();
+
+    let model = null;
+    let followTarget = new THREE.Vector3(0, 0, 0);
+    let hasTarget = false;
 
     function frameObjectToCamera(obj, camera, {
       fitOffset = 1.25,                        // 1.1~1.5 추천
@@ -444,15 +441,13 @@ camera.lookAt(0, 0.25, 0);
     async function loadModel(){
       const mtlLoader = new MTLLoader();
       mtlLoader.setResourcePath("${modelBase}");
-      // Use setPath + relative filenames to avoid path/url concatenation issues in Webview
-      if (typeof mtlLoader.setPath === 'function') mtlLoader.setPath("${modelBase}");
-      const materials = await mtlLoader.loadAsync("character-male-d.mtl");
+      const materials = await mtlLoader.loadAsync("${mtlUri}");
       materials.preload();
 
       const objLoader = new OBJLoader();
       objLoader.setMaterials(materials);
       objLoader.setPath("${modelBase}");
-      model = await objLoader.loadAsync("character-male-d.obj");
+      model = await objLoader.loadAsync("${objUri}");
 // 모델을 원점에 정렬(기존 로직 유지)
 const box = new THREE.Box3().setFromObject(model);
 const center = box.getCenter(new THREE.Vector3());

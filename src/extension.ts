@@ -368,8 +368,8 @@ meta.textContent = payload.repoPath
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
-    camera.position.set(0, 1.35, 3.1);
-    camera.lookAt(0, 0.4, 0);
+camera.position.set(0, 1.05, 3.1);
+camera.lookAt(0, 0.25, 0);
     scene.add(new THREE.AmbientLight(0xffffff, 0.78));
     const key = new THREE.DirectionalLight(0xffffff, 1.0);
     key.position.set(2, 4, 3);
@@ -388,7 +388,8 @@ meta.textContent = payload.repoPath
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      camera.lookAt(0, 0.4, 0);
+
+      camera.lookAt(0, 0.25, 0);
     }
     window.addEventListener('resize', resize);
     resize();
@@ -411,8 +412,8 @@ meta.textContent = payload.repoPath
 
       model.position.sub(center); // center to origin
 
-      camera.position.set(0, maxDim * 0.6, maxDim * 2.2);
-      camera.lookAt(0, 0, 0);
+      camera.position.set(0, maxDim * 0.35, maxDim * 2.2);
+      camera.lookAt(0, -0.15, 0);
       model.position.set(0, -0.95, 0);
       model.rotation.y = Math.PI;
       model.scale.setScalar(1.25);

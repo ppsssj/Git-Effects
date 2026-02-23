@@ -8,6 +8,9 @@ const execFileAsync = promisify(execFile);
 const OUT_NAME = "Git Effects";
 const PANEL_VIEWTYPE = "gitEffectsPanel";
 
+// webview에서 로컬 리소스(media/**)를 로드하려면 ExtensionContext가 필요합니다.
+let extensionContext: vscode.ExtensionContext | undefined;
+
 // ------------------------
 // Types (vscode.git API subset)
 // ------------------------
@@ -53,11 +56,19 @@ let lastFireMs = 0;
 function getOrCreatePanel(): vscode.WebviewPanel {
   if (panel) return panel;
 
+  const ctx = extensionContext;
+  if (!ctx) throw new Error("extensionContext is not initialized");
+
   panel = vscode.window.createWebviewPanel(
     PANEL_VIEWTYPE,
     " ", // 제목 최소화
     { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
-    { enableScripts: true, retainContextWhenHidden: false }
+    {
+      enableScripts: true,
+      retainContextWhenHidden: false,
+      // ✅ media/** 아래 파일을 webview에서 읽을 수 있게 허용
+      localResourceRoots: [vscode.Uri.joinPath(ctx.extensionUri, "media")],
+    },
   );
 
   panel.webview.html = getHtml(panel.webview);
@@ -85,7 +96,7 @@ function fireEffect(out: vscode.OutputChannel, payload: EffectPayload) {
   out.appendLine(
     `[EFFECT] ${payload.kind.toUpperCase()} ${payload.event} :: ${payload.title} :: ${payload.branch ?? "?"} -> ${
       payload.upstream ?? "?"
-    }`
+    }`,
   );
 
   p.webview.postMessage({ type: "effect", payload });
@@ -108,7 +119,10 @@ function isPathInside(child: string, parent: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
-function pickRepo(repos: Repository[], out: vscode.OutputChannel): Repository | null {
+function pickRepo(
+  repos: Repository[],
+  out: vscode.OutputChannel,
+): Repository | null {
   if (repos.length === 0) return null;
   if (repos.length === 1) return repos[0];
 
@@ -130,7 +144,10 @@ function pickRepo(repos: Repository[], out: vscode.OutputChannel): Repository | 
   return repos[0];
 }
 
-function resolveRepo(git: GitAPI, out: vscode.OutputChannel): Repository | null {
+function resolveRepo(
+  git: GitAPI,
+  out: vscode.OutputChannel,
+): Repository | null {
   const repos = git.repositories ?? [];
   if (!repos.length) return null;
   return pickRepo(repos, out);
@@ -139,7 +156,8 @@ function resolveRepo(git: GitAPI, out: vscode.OutputChannel): Repository | null 
 function headInfo(repo: Repository) {
   const head = repo.state.HEAD;
   const branch = typeof head?.name === "string" ? head.name : undefined;
-  const upstream = typeof head?.upstream?.name === "string" ? head.upstream.name : undefined;
+  const upstream =
+    typeof head?.upstream?.name === "string" ? head.upstream.name : undefined;
   const commit = typeof head?.commit === "string" ? head.commit : undefined;
   const ahead = Number(head?.ahead ?? 0);
   const behind = Number(head?.behind ?? 0);
@@ -182,7 +200,12 @@ function shortenReason(s: string, max = 220) {
 // ------------------------
 // Auto-detect (repo별 상태 Map)
 // ------------------------
-type RepoSnap = { ahead: number; behind: number; dirty: boolean; commit: string };
+type RepoSnap = {
+  ahead: number;
+  behind: number;
+  dirty: boolean;
+  commit: string;
+};
 
 function readSnap(repo: Repository): RepoSnap {
   const hi = headInfo(repo);
@@ -198,15 +221,77 @@ function readSnap(repo: Repository): RepoSnap {
 // Webview HTML (CSP/nonce 적용)
 // ------------------------
 function nonce() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let s = "";
-  for (let i = 0; i < 32; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < 32; i++)
+    s += chars.charAt(Math.floor(Math.random() * chars.length));
   return s;
 }
 
 function getHtml(webview: vscode.Webview) {
+  const ctx = extensionContext;
+  if (!ctx) throw new Error("extensionContext is not initialized");
+
   const n = nonce();
-  const csp = `default-src 'none'; img-src ${webview.cspSource} https:; style-src 'unsafe-inline'; script-src 'nonce-${n}';`;
+  const csp = [
+    "default-src 'none'",
+    // three가 텍스처 이미지를 <img>로 로드할 수 있어야 함
+    `img-src ${webview.cspSource} https: data:`,
+    // OBJ/MTL/텍스처를 fetch/XHR로 읽기 위해 필요
+    `connect-src ${webview.cspSource}`,
+    "style-src 'unsafe-inline'",
+    // ✅ import로 불러오는 모듈 스크립트(three.module.js 등)를 허용해야 함
+    `script-src 'nonce-${n}' ${webview.cspSource}`,
+  ].join("; ");
+  // three + loaders (이 파일들은 media/vendor/three 아래에 있어야 합니다)
+  const threeUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(
+      ctx.extensionUri,
+      "media",
+      "vendor",
+      "three",
+      "three.module.js",
+    ),
+  );
+  const objLoaderUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(
+      ctx.extensionUri,
+      "media",
+      "vendor",
+      "three",
+      "OBJLoader.js",
+    ),
+  );
+  const mtlLoaderUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(
+      ctx.extensionUri,
+      "media",
+      "vendor",
+      "three",
+      "MTLLoader.js",
+    ),
+  );
+
+  // model files (이 파일들은 media/models/character-male-d 아래에 있어야 합니다)
+  // model files (media/models 바로 아래에 있다고 가정)
+  const modelDir = vscode.Uri.joinPath(ctx.extensionUri, "media", "models");
+
+  const objUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(modelDir, "character-male-d.obj"),
+  );
+  const mtlUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(modelDir, "character-male-d.mtl"),
+  );
+
+  // OBJ는 models 기준으로 읽어도 되고
+  const modelBase = webview.asWebviewUri(modelDir).toString() + "/";
+
+  // ✅ 텍스처 상대경로는 media 기준으로 풀리게 만드는 게 깔끔함
+  const mediaBase =
+    webview
+      .asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, "media"))
+      .toString() + "/";
 
   return `<!doctype html>
 <html>
@@ -215,531 +300,197 @@ function getHtml(webview: vscode.Webview) {
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: transparent;
-      overflow: hidden;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Apple SD Gothic Neo";
-    }
-    /* stage: 오른쪽 패널 전체 */
-    .stage {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-    }
-    /* 슬라임 캔버스는 화면 전체를 쓰되, 실제 슬라임은 우측 하단 근처에만 등장 */
-    #slime {
-      position: absolute;
-      inset: 0;
-    }
-
-    /* 텍스트 카드(보조 정보) - 너무 방해 안 되게 하단에 작은 카드 */
-    .card {
-      position: absolute;
-      right: 14px;
-      bottom: 14px;
-      width: min(420px, calc(100vw - 28px));
-      border-radius: 16px;
-      background: rgba(20, 20, 24, 0.78);
-      border: 1px solid rgba(255,255,255,0.12);
-      box-shadow: 0 12px 36px rgba(0,0,0,0.45);
-      backdrop-filter: blur(10px);
-      color: #fff;
-      opacity: 0;
-      transform: translateX(40px);
-      transition: transform 220ms ease, opacity 220ms ease;
-    }
-    .card.show { opacity: 1; transform: translateX(0); }
-    .top {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 14px 8px;
-      font-weight: 900;
-      letter-spacing: -0.2px;
-    }
-    .badge {
-      width: 10px;
-      height: 10px;
-      border-radius: 999px;
-      flex: 0 0 auto;
-    }
-    .title { font-size: 13px; }
-    .meta {
-      padding: 0 14px 6px;
-      font-size: 12px;
-      opacity: 0.82;
-      word-break: break-word;
-    }
-    .detail {
-      padding: 0 14px 12px;
-      font-size: 12px;
-      opacity: 0.92;
-      line-height: 1.35;
-      word-break: break-word;
-    }
-    .bar {
-      height: 3px;
-      background: rgba(255,255,255,0.10);
-      border-bottom-left-radius: 16px;
-      border-bottom-right-radius: 16px;
-      overflow: hidden;
-    }
-    .bar > div {
-      height: 100%;
-      width: 0%;
-      transition: width 1600ms linear;
-    }
-
-    /* kind colors */
-    .k-success .badge { background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,0.15); }
-    .k-success .bar > div { background: rgba(34,197,94,0.85); }
-
-    .k-error .badge { background: #ef4444; box-shadow: 0 0 0 4px rgba(239,68,68,0.15); }
-    .k-error .bar > div { background: rgba(239,68,68,0.85); }
-
-    .k-info .badge { background: #60a5fa; box-shadow: 0 0 0 4px rgba(96,165,250,0.15); }
-    .k-info .bar > div { background: rgba(96,165,250,0.85); }
+    html,body{height:100%;margin:0;background:transparent;overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,"Apple SD Gothic Neo"}
+    #c{position:absolute;inset:0}
+    .hud{position:absolute;right:14px;bottom:14px;width:min(420px,calc(100vw - 28px));border-radius:16px;background:rgba(20,20,24,.78);border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 36px rgba(0,0,0,.45);backdrop-filter:blur(10px);color:#fff;pointer-events:none;opacity:0;transform:translateX(40px);transition:transform 220ms ease, opacity 220ms ease;}
+    .hud.show{opacity:1;transform:translateX(0)}
+    .top{display:flex;align-items:center;gap:10px;padding:12px 14px 8px;font-weight:900;letter-spacing:-0.2px}
+    .badge{width:10px;height:10px;border-radius:999px;flex:0 0 auto}
+    .title{font-size:13px}
+    .meta{padding:0 14px 6px;font-size:12px;opacity:.82;word-break:break-word}
+    .detail{padding:0 14px 12px;font-size:12px;opacity:.92;line-height:1.35;word-break:break-word}
+    .bar{height:3px;background:rgba(255,255,255,.10);border-bottom-left-radius:16px;border-bottom-right-radius:16px;overflow:hidden}
+    .bar>div{height:100%;width:0%;transition:width 1600ms linear}
+    .k-success .badge{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.15)}
+    .k-success .bar>div{background:rgba(34,197,94,.85)}
+    .k-error .badge{background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.15)}
+    .k-error .bar>div{background:rgba(239,68,68,.85)}
+    .k-info .badge{background:#60a5fa;box-shadow:0 0 0 4px rgba(96,165,250,.15)}
+    .k-info .bar>div{background:rgba(96,165,250,.85)}
   </style>
 </head>
 <body>
-  <div class="stage">
-    <canvas id="slime"></canvas>
-
-    <div id="card" class="card k-info">
-      <div class="top"><span class="badge"></span><span id="title" class="title">Ready</span></div>
-      <div id="meta" class="meta"></div>
-      <div id="detail" class="detail"></div>
-      <div class="bar"><div id="progress"></div></div>
-    </div>
+  <canvas id="c"></canvas>
+  <div id="hud" class="hud k-info">
+    <div class="top"><span class="badge"></span><span id="t" class="title">Ready</span></div>
+    <div id="m" class="meta"></div>
+    <div id="d" class="detail"></div>
+    <div class="bar"><div id="p"></div></div>
   </div>
 
-  <script nonce="${n}">
-    // ---------------------------
-    // DOM
-    // ---------------------------
-    const canvas = document.getElementById("slime");
-    const ctx = canvas.getContext("2d", { alpha: true });
+  <script type="module" nonce="${n}">
+    import * as THREE from "${threeUri}";
+    import { OBJLoader } from "${objLoaderUri}";
+    import { MTLLoader } from "${mtlLoaderUri}";
 
-    const card = document.getElementById("card");
-    const title = document.getElementById("title");
-    const meta = document.getElementById("meta");
-    const detail = document.getElementById("detail");
-    const progress = document.getElementById("progress");
+    const hud = document.getElementById('hud');
+    const title = document.getElementById('t');
+    const meta = document.getElementById('m');
+    const detail = document.getElementById('d');
+    const progress = document.getElementById('p');
 
-    function resize() {
-      const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-      canvas.width = Math.floor(window.innerWidth * dpr);
-      canvas.height = Math.floor(window.innerHeight * dpr);
-      canvas.style.width = window.innerWidth + "px";
-      canvas.style.height = window.innerHeight + "px";
-      ctx.setTransform(dpr,0,0,dpr,0,0);
+    function setKind(kind){
+      hud.classList.remove('k-success','k-error','k-info');
+      hud.classList.add(kind === 'error' ? 'k-error' : kind === 'success' ? 'k-success' : 'k-info');
     }
-    window.addEventListener("resize", resize);
+
+    function showHud(payload){
+      setKind(payload.kind || 'info');
+      title.textContent = payload.title || '';
+      const b = payload.branch || '?';
+      const u = payload.upstream || '?';
+meta.textContent = payload.repoPath
+  ? (payload.repoPath + '  •  ' + b + ' → ' + u)
+  : (b + ' → ' + u);      detail.textContent = payload.detail || '';
+      hud.classList.add('show');
+      progress.style.transition = 'none';
+      progress.style.width = '0%';
+      requestAnimationFrame(() => {
+        progress.style.transition = 'width 1600ms linear';
+        progress.style.width = '100%';
+      });
+      setTimeout(() => hud.classList.remove('show'), 1900);
+    }
+
+    const canvas = document.getElementById('c');
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
+    renderer.setPixelRatio(Math.max(1, window.devicePixelRatio || 1));
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+    camera.position.set(0, 1.35, 3.1);
+    camera.lookAt(0, 0.4, 0);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.78));
+    const key = new THREE.DirectionalLight(0xffffff, 1.0);
+    key.position.set(2, 4, 3);
+    scene.add(key);
+
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.9, 48),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent:true, opacity:0.15 })
+    );
+    shadow.rotation.x = -Math.PI/2;
+    shadow.position.y = -0.95;
+    scene.add(shadow);
+
+    function resize(){
+      const w = window.innerWidth, h = window.innerHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      camera.lookAt(0, 0.4, 0);
+    }
+    window.addEventListener('resize', resize);
     resize();
 
-    // ---------------------------
-    // Helpers
-    // ---------------------------
-    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-    const lerp = (a, b, t) => a + (b - a) * t;
-    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-    const easeInOutCubic = (t) => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2;
-    const rand = (a, b) => a + Math.random() * (b - a);
+    let model = null;
+    async function loadModel(){
+      const mtlLoader = new MTLLoader();
+      mtlLoader.setResourcePath("${modelBase}");
+      const materials = await mtlLoader.loadAsync("${mtlUri}");
+      materials.preload();
 
-    // ---------------------------
-    // Slime actor (toy 3D 느낌)
-    // ---------------------------
-    const slime = {
-      // 화면 좌표(픽셀)
-      x: 0,
-      y: 0,
-      // 기본 크기
-      r: 56,
-      // 스쿼시/스트레치
-      sx: 1,
-      sy: 1,
-      // 표정
-      mood: "idle", // idle | happy | proud | sad | shocked
-      // 진행/상태머신
-      phase: "idle", // idle | enter | act | exit
-      t0: 0,
-      // 이벤트 맵핑
-      kind: "info",
-      event: "manual",
-      label: "",
-      // 파티클
-      particles: [],
-      // 팝 텍스트
-      pops: [],
-    };
+      const objLoader = new OBJLoader();
+      objLoader.setMaterials(materials);
+      objLoader.setPath("${modelBase}");
+      model = await objLoader.loadAsync("${objUri}");
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
 
-    function setKind(kind) {
-      card.classList.remove("k-success","k-error","k-info");
-      card.classList.add(kind === "error" ? "k-error" : kind === "success" ? "k-success" : "k-info");
+      model.position.sub(center); // center to origin
+
+      camera.position.set(0, maxDim * 0.6, maxDim * 2.2);
+      camera.lookAt(0, 0, 0);
+      model.position.set(0, -0.95, 0);
+      model.rotation.y = Math.PI;
+      model.scale.setScalar(1.25);
+      scene.add(model);
     }
 
-    function showCard(payload) {
-      setKind(payload.kind || "info");
-      title.textContent = payload.title || "Done";
+    loadModel().catch((err) => {
+      title.textContent = 'Model load failed';
+      detail.textContent = String(err?.message || err);
+      hud.classList.add('show');
+    });
 
-      const b = payload.branch || "?";
-      const u = payload.upstream || "?";
-      meta.textContent = payload.repoPath ? \`\${payload.repoPath}  •  \${b} → \${u}\` : \`\${b} → \${u}\`;
-      detail.textContent = payload.detail || "";
-
-      // progress bar
-      card.classList.add("show");
-      progress.style.transition = "none";
-      progress.style.width = "0%";
-      requestAnimationFrame(() => {
-        progress.style.transition = "width 1600ms linear";
-        progress.style.width = "100%";
-      });
-
-      // 카드가 너무 오래 남지 않게 자연히 흐릿해짐(패널 dispose는 extension 쪽에서)
-      setTimeout(() => card.classList.remove("show"), 1900);
+    const state = { phase: 'idle', t0: performance.now(), kind: 'info', event: 'manual' };
+    function startAnim(kind, event){
+      state.kind = kind || 'info';
+      state.event = event || 'manual';
+      state.phase = 'enter';
+      state.t0 = performance.now();
     }
 
-    function spawnSparkles(cx, cy, count, tint) {
-      for (let i = 0; i < count; i++) {
-        slime.particles.push({
-          x: cx + rand(-12, 12),
-          y: cy + rand(-12, 12),
-          vx: rand(-1.2, 1.2),
-          vy: rand(-2.8, -1.2),
-          life: rand(18, 28),
-          max: 28,
-          size: rand(2, 4),
-          tint
-        });
-      }
-    }
+    function tick(now){
+      requestAnimationFrame(tick);
+      if (!model) { renderer.render(scene, camera); return; }
+      const t = now - state.t0;
 
-    function popText(text, cx, cy, tint) {
-      slime.pops.push({
-        text,
-        x: cx,
-        y: cy,
-        vy: -1.6,
-        life: 34,
-        max: 34,
-        tint
-      });
-    }
-
-    function setScenario(payload) {
-      slime.kind = payload.kind || "info";
-      slime.event = payload.event || "manual";
-
-      // 기본 위치: 우측 하단 근처(바닥)
-      const floorY = window.innerHeight - 84;
-      slime.y = floorY;
-
-      // enter: 화면 밖 오른쪽에서 기어오기
-      slime.x = window.innerWidth + 140;
-
-      // 기본 스케일
-      slime.sx = 1; slime.sy = 1;
-
-      // mood/label
-      if (slime.kind === "error") {
-        slime.mood = "sad";
-      } else if (slime.event === "commit") {
-        slime.mood = "proud";
-      } else {
-        slime.mood = "happy";
-      }
-
-      slime.label = (slime.event || "").toUpperCase();
-
-      slime.phase = "enter";
-      slime.t0 = performance.now();
-
-      // clear effects
-      slime.particles = [];
-      slime.pops = [];
-    }
-
-    // ---------------------------
-    // Draw routines
-    // ---------------------------
-    function drawSlime(x, y, r, sx, sy, mood, kind) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.scale(sx, sy);
-
-      // body base color
-      const base = (kind === "error") ? "rgba(255, 90, 90, 0.92)" : (kind === "success" ? "rgba(90, 255, 170, 0.92)" : "rgba(120, 180, 255, 0.92)");
-
-      // shadow on floor
-      ctx.save();
-      ctx.globalAlpha = 0.35;
-      ctx.scale(1.2, 0.45);
-      ctx.beginPath();
-      ctx.ellipse(0, r*0.95, r*0.95, r*0.55, 0, 0, Math.PI*2);
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.fill();
-      ctx.restore();
-
-      // body gradient (toy 3D)
-      const g = ctx.createRadialGradient(-r*0.25, -r*0.35, r*0.2, 0, 0, r*1.25);
-      g.addColorStop(0, "rgba(255,255,255,0.55)");
-      g.addColorStop(0.25, base);
-      g.addColorStop(1, "rgba(0,0,0,0.20)");
-
-      ctx.beginPath();
-      ctx.arc(0, 0, r, 0, Math.PI*2);
-      ctx.fillStyle = g;
-      ctx.fill();
-
-      // glossy highlight
-      ctx.globalAlpha = 0.35;
-      ctx.beginPath();
-      ctx.ellipse(-r*0.25, -r*0.35, r*0.42, r*0.28, -0.2, 0, Math.PI*2);
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
-      ctx.fill();
-      ctx.globalAlpha = 1;
-
-      // eyes
-      const eyeY = -r*0.12;
-      const eyeX = r*0.22;
-      ctx.fillStyle = "rgba(10,10,12,0.92)";
-      ctx.beginPath(); ctx.arc(-eyeX, eyeY, r*0.10, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc( eyeX, eyeY, r*0.10, 0, Math.PI*2); ctx.fill();
-
-      // eye shine
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      ctx.beginPath(); ctx.arc(-eyeX - r*0.03, eyeY - r*0.03, r*0.03, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc( eyeX - r*0.03, eyeY - r*0.03, r*0.03, 0, Math.PI*2); ctx.fill();
-
-      // mouth (mood)
-      ctx.strokeStyle = "rgba(10,10,12,0.88)";
-      ctx.lineWidth = Math.max(2, r*0.06);
-      ctx.lineCap = "round";
-
-      ctx.beginPath();
-      if (mood === "happy" || mood === "proud") {
-        ctx.arc(0, r*0.05, r*0.20, 0.15*Math.PI, 0.85*Math.PI);
-      } else if (mood === "sad") {
-        ctx.arc(0, r*0.22, r*0.18, 1.15*Math.PI, 1.85*Math.PI);
-      } else {
-        // shocked
-        ctx.ellipse(0, r*0.10, r*0.10, r*0.14, 0, 0, Math.PI*2);
-      }
-      ctx.stroke();
-
-      // blush for happy
-      if (mood === "happy" || mood === "proud") {
-        ctx.globalAlpha = 0.25;
-        ctx.fillStyle = "rgba(255,110,160,0.95)";
-        ctx.beginPath(); ctx.ellipse(-r*0.32, r*0.02, r*0.16, r*0.11, 0, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse( r*0.32, r*0.02, r*0.16, r*0.11, 0, 0, Math.PI*2); ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-
-      ctx.restore();
-    }
-
-    function drawParticles() {
-      for (const p of slime.particles) {
-        const t = p.life / p.max;
-        ctx.globalAlpha = clamp(t, 0, 1);
-        ctx.fillStyle = p.tint;
-        ctx.beginPath();
-        // simple sparkle: diamond
-        ctx.moveTo(p.x, p.y - p.size);
-        ctx.lineTo(p.x + p.size, p.y);
-        ctx.lineTo(p.x, p.y + p.size);
-        ctx.lineTo(p.x - p.size, p.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-    }
-
-    function drawPops() {
-      for (const p of slime.pops) {
-        const t = p.life / p.max;
-        ctx.globalAlpha = clamp(t, 0, 1);
-        ctx.font = "900 14px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
-        ctx.fillStyle = p.tint;
-        ctx.fillText(p.text, p.x, p.y);
-        ctx.globalAlpha = 1;
-      }
-    }
-
-    // ---------------------------
-    // Animation loop
-    // ---------------------------
-    function update(now) {
-      const w = window.innerWidth;
-      const floorY = window.innerHeight - 84;
-
-      // clear
-      ctx.clearRect(0, 0, w, window.innerHeight);
-
-      // phase machine
-      const t = now - slime.t0;
-
-      if (slime.phase === "idle") {
-        // nothing
-      }
-
-      if (slime.phase === "enter") {
-        // 0~700ms: crawl in from right
-        const dur = 700;
-        const tt = clamp(t / dur, 0, 1);
-        const e = easeOutCubic(tt);
-
-        const targetX = w - 170;     // 우측 하단 근처
-        slime.x = lerp(w + 140, targetX, e);
-        slime.y = floorY;
-
-        // crawling squash
-        slime.sx = 1.15 - 0.20 * Math.sin(tt * Math.PI);
-        slime.sy = 0.90 + 0.18 * Math.sin(tt * Math.PI);
-
-        if (tt >= 1) {
-          slime.phase = "act";
-          slime.t0 = now;
-        }
-      }
-
-      if (slime.phase === "act") {
-        // scenario by kind/event
-        if (slime.kind === "error") {
-          // 0~250ms shake, then droop
-          const dur = 900;
-          const tt = clamp(t / dur, 0, 1);
-
-          const shake = (tt < 0.35) ? Math.sin(tt * 40) * 10 : 0;
-          slime.x += shake;
-
-          // droop
-          slime.sx = lerp(1.05, 1.25, easeInOutCubic(clamp((tt - 0.25)/0.75,0,1)));
-          slime.sy = lerp(0.95, 0.75, easeInOutCubic(clamp((tt - 0.25)/0.75,0,1)));
-
-          if (tt > 0.25 && slime.particles.length === 0) {
-            popText("X", slime.x + 16, slime.y - 66, "rgba(255,90,90,0.95)");
-          }
-
-          if (tt >= 1) {
-            slime.phase = "exit";
-            slime.t0 = now;
-          }
-        } else if (slime.event === "commit") {
-          // commit: stamp action
-          const dur = 1050;
-          const tt = clamp(t / dur, 0, 1);
-
-          // 0~0.45 squash down, 0.45~0.75 stamp pop, 0.75~1 settle
-          if (tt < 0.45) {
-            const e = easeInOutCubic(tt / 0.45);
-            slime.sx = lerp(1.00, 1.35, e);
-            slime.sy = lerp(1.00, 0.70, e);
-          } else if (tt < 0.75) {
-            const e = easeOutCubic((tt - 0.45) / 0.30);
-            slime.sx = lerp(1.35, 0.92, e);
-            slime.sy = lerp(0.70, 1.18, e);
-
-            if (slime.particles.length === 0) {
-              spawnSparkles(slime.x, slime.y - 56, 16, "rgba(255,255,255,0.92)");
-              popText("COMMIT!", slime.x - 48, slime.y - 92, "rgba(255,255,255,0.92)");
-            }
-          } else {
-            const e = easeInOutCubic((tt - 0.75) / 0.25);
-            slime.sx = lerp(0.92, 1.05, e);
-            slime.sy = lerp(1.18, 0.98, e);
-          }
-
-          if (tt >= 1) {
-            slime.phase = "exit";
-            slime.t0 = now;
-          }
+      if (state.phase === 'enter'){
+        const tt = Math.min(1, t / 650);
+        model.position.x = THREE.MathUtils.lerp(2.2, 0.0, 1 - Math.pow(1-tt, 3));
+        model.rotation.z = Math.sin(tt * Math.PI * 2) * 0.06;
+        model.scale.y = 1.0 - Math.sin(tt * Math.PI) * 0.05;
+        if (tt >= 1){ state.phase = 'act'; state.t0 = now; }
+      } else if (state.phase === 'act'){
+        if (state.kind === 'error'){
+          const tt = Math.min(1, t / 900);
+          model.rotation.y = Math.PI + Math.sin(tt * 18) * 0.08;
+          model.scale.y = THREE.MathUtils.lerp(1.0, 0.92, tt);
+          model.position.y = THREE.MathUtils.lerp(-0.95, -1.02, tt);
+          if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
+        } else if (state.event === 'commit'){
+          const tt = Math.min(1, t / 950);
+          const s = tt < 0.45
+            ? THREE.MathUtils.lerp(1.0, 0.90, tt/0.45)
+            : THREE.MathUtils.lerp(0.90, 1.05, (tt-0.45)/0.55);
+          model.scale.y = s;
+          model.rotation.x = -Math.sin(tt * Math.PI) * 0.10;
+          if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
         } else {
-          // success push/pull: bounce + sparkles
-          const dur = 950;
-          const tt = clamp(t / dur, 0, 1);
-
-          // bounce
-          const b = Math.sin(tt * Math.PI) * 18;
-          slime.y = floorY - b;
-
-          slime.sx = 1.02 + 0.10 * Math.sin(tt * Math.PI);
-          slime.sy = 0.98 + 0.16 * Math.sin(tt * Math.PI);
-
-          if (tt > 0.15 && slime.particles.length === 0) {
-            spawnSparkles(slime.x, slime.y - 58, 18, "rgba(255,255,255,0.90)");
-          }
-
-          if (tt >= 1) {
-            slime.phase = "exit";
-            slime.t0 = now;
-          }
+          const tt = Math.min(1, t / 850);
+          model.position.y = -0.95 + Math.sin(tt * Math.PI) * 0.10;
+          model.rotation.x = -Math.sin(tt * Math.PI) * 0.08;
+          if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
         }
+      } else if (state.phase === 'exit'){
+        const tt = Math.min(1, t / 500);
+        model.position.x = THREE.MathUtils.lerp(0.0, 2.2, tt);
+        model.rotation.z *= (1-tt);
+        if (tt >= 1){ state.phase = 'idle'; }
       }
 
-      if (slime.phase === "exit") {
-        // 살짝 오른쪽으로 물러나며 페이드 아웃 느낌
-        const dur = 520;
-        const tt = clamp(t / dur, 0, 1);
-        const e = easeInOutCubic(tt);
-
-        slime.x = slime.x + e * 120;
-        slime.sx = lerp(slime.sx, 0.92, e);
-        slime.sy = lerp(slime.sy, 0.92, e);
-
-        if (tt >= 1) {
-          slime.phase = "idle";
-        }
-      }
-
-      // update particles
-      for (const p of slime.particles) {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.08;
-        p.life -= 1;
-      }
-      slime.particles = slime.particles.filter(p => p.life > 0);
-
-      // update pops
-      for (const p of slime.pops) {
-        p.y += p.vy;
-        p.life -= 1;
-      }
-      slime.pops = slime.pops.filter(p => p.life > 0);
-
-      // render order: particles behind? (원하면 변경 가능)
-      drawParticles();
-      drawSlime(slime.x, slime.y, slime.r, slime.sx, slime.sy, slime.mood, slime.kind);
-      drawPops();
-
-      requestAnimationFrame(update);
+      renderer.render(scene, camera);
     }
-    requestAnimationFrame(update);
+    requestAnimationFrame(tick);
 
-    // ---------------------------
-    // Message handler
-    // ---------------------------
-    window.addEventListener("message", (event) => {
-      const data = event.data;
-      if (!data || data.type !== "effect") return;
-
-      const payload = data.payload || {};
-      showCard(payload);
-      setScenario(payload);
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg || msg.type !== 'effect') return;
+      const payload = msg.payload || {};
+      showHud(payload);
+      startAnim(payload.kind || 'info', payload.event || 'manual');
     });
   </script>
 </body>
 </html>`;
 }
-// ------------------------
 // Activation
 // ------------------------
 export function activate(context: vscode.ExtensionContext) {
+  extensionContext = context;
   const out = vscode.window.createOutputChannel(OUT_NAME);
   out.appendLine("=== activate() start ===");
   out.appendLine(`time: ${new Date().toISOString()}`);
@@ -763,7 +514,7 @@ export function activate(context: vscode.ExtensionContext) {
         title: "Manual Effect ✅",
         detail: "Command Palette trigger",
       });
-    })
+    }),
   );
 
   if (!gitExt) {
@@ -781,7 +532,10 @@ export function activate(context: vscode.ExtensionContext) {
       context.subscriptions.push(
         vscode.commands.registerCommand("git-effects.push", async () => {
           const repo = resolveRepo(git, out);
-          if (!repo) return vscode.window.showWarningMessage("Git repository를 찾지 못했습니다.");
+          if (!repo)
+            return vscode.window.showWarningMessage(
+              "Git repository를 찾지 못했습니다.",
+            );
           const hi = headInfo(repo);
 
           out.appendLine(`[CMD] push @ ${repo.rootUri.fsPath}`);
@@ -793,15 +547,20 @@ export function activate(context: vscode.ExtensionContext) {
             branch: hi.branch,
             upstream: hi.upstream,
             title: res.ok ? "Push 성공 ✅" : "Push 실패 ❌",
-            detail: res.ok ? "git push completed" : shortenReason(res.stderr || res.stdout),
+            detail: res.ok
+              ? "git push completed"
+              : shortenReason(res.stderr || res.stdout),
           });
-        })
+        }),
       );
 
       context.subscriptions.push(
         vscode.commands.registerCommand("git-effects.pull", async () => {
           const repo = resolveRepo(git, out);
-          if (!repo) return vscode.window.showWarningMessage("Git repository를 찾지 못했습니다.");
+          if (!repo)
+            return vscode.window.showWarningMessage(
+              "Git repository를 찾지 못했습니다.",
+            );
           const hi = headInfo(repo);
 
           out.appendLine(`[CMD] pull @ ${repo.rootUri.fsPath}`);
@@ -813,15 +572,20 @@ export function activate(context: vscode.ExtensionContext) {
             branch: hi.branch,
             upstream: hi.upstream,
             title: res.ok ? "Pull 성공 ✅" : "Pull 실패 ❌",
-            detail: res.ok ? "git pull completed" : shortenReason(res.stderr || res.stdout),
+            detail: res.ok
+              ? "git pull completed"
+              : shortenReason(res.stderr || res.stdout),
           });
-        })
+        }),
       );
 
       context.subscriptions.push(
         vscode.commands.registerCommand("git-effects.commit", async () => {
           const repo = resolveRepo(git, out);
-          if (!repo) return vscode.window.showWarningMessage("Git repository를 찾지 못했습니다.");
+          if (!repo)
+            return vscode.window.showWarningMessage(
+              "Git repository를 찾지 못했습니다.",
+            );
           const hi = headInfo(repo);
 
           out.appendLine(`[CMD] commit @ ${repo.rootUri.fsPath}`);
@@ -842,7 +606,7 @@ export function activate(context: vscode.ExtensionContext) {
             title: res.ok ? "Commit 완료 ✅" : "Commit 실패 ❌",
             detail: res.ok ? msg : shortenReason(res.stderr || res.stdout),
           });
-        })
+        }),
       );
 
       // ---- Auto-detect engine (repo별) ----
@@ -897,7 +661,14 @@ export function activate(context: vscode.ExtensionContext) {
               });
             }
 
-            if (autoCommit && cur.commit && prev.commit && cur.commit !== prev.commit && prev.dirty && !cur.dirty) {
+            if (
+              autoCommit &&
+              cur.commit &&
+              prev.commit &&
+              cur.commit !== prev.commit &&
+              prev.dirty &&
+              !cur.dirty
+            ) {
               fireEffect(out, {
                 kind: "success",
                 event: "commit",
@@ -927,7 +698,9 @@ export function activate(context: vscode.ExtensionContext) {
       };
 
       schedule();
-      context.subscriptions.push({ dispose: () => timer && clearTimeout(timer) });
+      context.subscriptions.push({
+        dispose: () => timer && clearTimeout(timer),
+      });
 
       out.appendLine("auto-detect started (repo-wise)");
     },
@@ -935,7 +708,7 @@ export function activate(context: vscode.ExtensionContext) {
       const msg = e instanceof Error ? e.message : String(e);
       out.appendLine(`[ERR] vscode.git activate failed: ${msg}`);
       vscode.window.showErrorMessage(`vscode.git activate failed: ${msg}`);
-    }
+    },
   );
 
   out.appendLine("=== activate() end ===");

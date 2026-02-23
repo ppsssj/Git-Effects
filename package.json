@@ -17,6 +17,12 @@
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "files": [
+    "out/**",
+    "media/**",
+    "assets/**",
+    "package.json"
+  ],
   "contributes": {
     "commands": [
       {

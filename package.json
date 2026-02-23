@@ -8,21 +8,17 @@
   },
   "icon": "assets/icon.png",
   "categories": [
+    "SCM Providers",
     "Other"
   ],
-  "extensionDependencies": [
-    "vscode.git"
-  ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCommand:git-effects.helloWorld",
+    "onCommand:git-effects.push",
+    "onCommand:git-effects.pull",
+    "onCommand:git-effects.commit"
   ],
   "main": "./out/extension.js",
-  "files": [
-    "out/**",
-    "media/**",
-    "assets/**",
-    "package.json"
-  ],
   "contributes": {
     "commands": [
       {
@@ -106,5 +102,22 @@
   },
   "dependencies": {
     "three": "^0.183.1"
-  }
+  },
+  "publisher": "ppsssj",
+  "license": "MIT",
+  "keywords": [
+    "git",
+    "vscode",
+    "scm",
+    "effects",
+    "webview"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ppsssj/git-Effects.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ppsssj/git-Effects/issues"
+  },
+  "homepage": "https://github.com/ppsssj/git-Effects#readme"
 }

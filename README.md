@@ -50,11 +50,22 @@
 
 ## Release / Publish Log
 
+- **v0.0.3 (2026-02-25)** — Auto Detect 안정화(이벤트 기반 + 디바운스) + SCM 깜박임 개선  
+  - Changed:
+    - Auto Detect를 **repo state change(event-driven)** 기반으로 전환
+    - 짧은 시간 연속 변화에 **debounce** 적용(기본 1200ms)
+    - 불필요한 Git 상태 강제 갱신/폴링 제거로 **Source Control 깜박임 및 오버헤드 개선**
+  - Docs:
+    - 터미널에서 실행한 `git push/pull/commit` 동작 설명 정리(“정확 판정” vs “성공 추정” 구분)
+
+- **v0.0.2 (2026-02-24)** — Documentation update  
+  - Changed:
+    - README 정리/보강(사용 방법/구조 설명 중심)
+
 - **v0.0.1 (2026-02-23)** — First public release on VS Code Marketplace  
-  - Marketplace: https://marketplace.visualstudio.com/items?itemName=ppsssj.git-effects  
   - What’s included:
     - Git Push/Pull/Commit 결과를 Webview 패널 이펙트로 시각화
-    - Manual trigger commands + Auto-detect(polling) 지원
+    - Manual trigger commands + Auto Detect(초기 버전)
 
 ---
 
@@ -112,10 +123,11 @@ git-Effects는 2가지 트리거 경로를 가집니다.
 ### 2) Auto Detect (선택: “성공 추정” 중심)
 
 - repo 상태 변화(ahead/behind/dirty/HEAD 변화)를 기준으로 “성공처럼 보이는 사건”을 추정합니다.
-- 실패는 상태 변화가 없을 수 있어 감지가 어렵습니다.
+- 짧은 시간 내 연속 변화는 **debounce**로 묶어서 처리해 불필요한 갱신을 줄입니다.
+- 실패는 상태 변화가 없을 수 있어 감지가 어렵습니다(기본적으로 성공 UX 중심).
 
 ✅ 장점: 터미널에서 실행해도 성공이면 감지될 수 있음  
-⚠️ 단점: 실패를 정확히 잡기 어려움(기본적으로 성공 UX 중심)
+⚠️ 단점: 실패를 정확히 잡기 어려움(정확 판정이 필요하면 커맨드 모드 권장)
 
 ---
 
@@ -130,7 +142,7 @@ git-Effects는 2가지 트리거 경로를 가집니다.
 - https://marketplace.visualstudio.com/items?itemName=ppsssj.git-effects
 
 ### VSIX로 설치(오프라인/검색이 안 될 때)
-1. `git-effects-0.0.1.vsix` 다운로드(또는 릴리즈/빌드 산출물)
+1. `.vsix` 다운로드(릴리즈/빌드 산출물)
 2. VS Code → Extensions 탭 → `...` → **Install from VSIX...**
 3. `.vsix` 선택 후 설치
 
@@ -140,8 +152,6 @@ git-Effects는 2가지 트리거 경로를 가집니다.
 
 > Extension Development Host에서 실행(개발용)
 
-### 1) 설치/실행
-
 ```bash
 git clone https://github.com/ppsssj/git-Effects.git
 cd git-Effects
@@ -149,13 +159,6 @@ npm install
 ```
 
 VS Code에서 프로젝트 열기 → `F5` → Extension Development Host 실행
-
-### 2) 동작 확인
-
-Extension Development Host에서:
-
-- `Ctrl+Shift+P` → `Git Effects: Push (accurate mode)` 실행
-- 성공/실패에 따라 Webview 패널 이펙트가 뜨는지 확인
 
 ---
 
@@ -168,8 +171,9 @@ Command Palette(`Ctrl+Shift+P`)에서 아래를 실행합니다.
 - `Git Effects: Pull (accurate mode)`
 - `Git Effects: Commit (accurate mode)`
 
-> **중요:** 터미널에서 `git push`를 직접 실행하면, 확장이 그 프로세스를 “가로채지” 않습니다.  
-> 성공/실패 이펙트를 확실하게 보려면 확장 커맨드를 사용하세요.
+> **중요(정확한 의미):**  
+> 터미널에서 `git push/pull/commit`을 직접 실행해도 **Auto Detect가 켜져 있으면 성공은 감지될 수 있습니다(상태 변화 기반 추정)**.  
+> 다만 **실패/에러 메시지까지 정확히 표시하려면** 확장 커맨드(accurate mode)를 사용하세요.
 
 ---
 
@@ -180,24 +184,28 @@ Command Palette(`Ctrl+Shift+P`)에서 아래를 실행합니다.
 | Key | Type | Default | Description |
 |---|---:|---:|---|
 | `gitEffects.enabled` | boolean | `true` | Git Effects UI 사용 여부 |
-| `gitEffects.pollMs` | number | `500` | Auto-detect 폴링 간격(ms) |
 | `gitEffects.cooldownMs` | number | `1200` | 이펙트 최소 간격(ms) |
 | `gitEffects.durationMs` | number | `2200` | 패널 자동 종료 지연(ms) |
 | `gitEffects.autoPush` | boolean | `true` | Push 성공 추정 감지 (ahead > 0 → 0) |
 | `gitEffects.autoPull` | boolean | `true` | Pull 성공 추정 감지 (behind > 0 → 0) |
 | `gitEffects.autoCommit` | boolean | `true` | Commit 완료 추정 감지(휴리스틱) |
+| `gitEffects.debounceMs` | number | `1200` | Auto Detect debounce(ms). 연속 변화 묶음 처리 |
+
+> `gitEffects.pollMs`는 구버전(폴링 기반 Auto Detect) 설정 키입니다.  
+> v0.0.3부터 Auto Detect는 event-driven으로 동작하며, `debounceMs` 사용을 권장합니다.  
+> (하위 호환을 위해 `pollMs`가 남아있더라도 동작에 영향이 없도록 유지하는 것을 권장)
 
 설정 예시:
 
 ```json
 {
   "gitEffects.enabled": true,
-  "gitEffects.pollMs": 500,
   "gitEffects.cooldownMs": 1200,
   "gitEffects.durationMs": 2200,
   "gitEffects.autoPush": true,
   "gitEffects.autoPull": true,
-  "gitEffects.autoCommit": true
+  "gitEffects.autoCommit": true,
+  "gitEffects.debounceMs": 1200
 }
 ```
 
@@ -205,7 +213,7 @@ Command Palette(`Ctrl+Shift+P`)에서 아래를 실행합니다.
 
 ## Error Demo (실패 이펙트 재현)
 
-### 케이스 A) 없는 리모트로 push 실패(확실)
+아래처럼 확실한 실패 케이스를 만들고, **터미널이 아니라** 확장 커맨드로 실행하면 에러 패널을 재현할 수 있습니다.
 
 ```bash
 git remote set-url origin https://example.invalid/does-not-exist.git
@@ -214,10 +222,7 @@ git add .
 git commit -m "fail: invalid remote"
 ```
 
-이 상태에서 **터미널에서 `git push`가 아니라**,  
-VS Code Command Palette에서 **`Git Effects: Push (accurate mode)`** 를 실행해야 패널 에러가 뜹니다.
-
-- 터미널에서 `git push`를 직접 실행하면: 터미널에만 `fatal: ...` 출력 (패널은 안 뜨는 게 정상)
+- Command Palette → **`Git Effects: Push (accurate mode)`**
 
 원복:
 
@@ -262,7 +267,7 @@ src/
   extension.ts                  # activate/deactivate + wiring
   app/
     registerCommands.ts         # 커맨드 등록
-    autoDetect.ts               # repo 상태 폴링(선택)
+    autoDetect.ts               # repo 상태 기반 자동 감지(선택)
   git/
     types.ts                    # Git API 타입
     repo.ts                     # repo 선택/스냅샷/HEAD

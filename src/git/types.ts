@@ -1,3 +1,4 @@
+// types.ts
 import type * as vscode from "vscode";
 
 export type GitExtension = { getAPI(version: 1): GitAPI };
@@ -16,6 +17,10 @@ export type Repository = {
     workingTreeChanges?: unknown[];
     indexChanges?: unknown[];
     mergeChanges?: unknown[];
+
+    // ✅ 추가: Git repo state change 이벤트 (VS Code Git API에 존재)
+    onDidChange?: vscode.Event<void>;
   };
+
   status?: () => Thenable<void>;
 };

@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 
-export function getHtml(webview: vscode.Webview, context: vscode.ExtensionContext) {
+export function getHtml(
+  webview: vscode.Webview,
+  context: vscode.ExtensionContext,
+  opts?: { characterId?: string },
+) {
   const ctx = context;
   const n = nonce();
   const csp = [
@@ -42,18 +46,16 @@ export function getHtml(webview: vscode.Webview, context: vscode.ExtensionContex
     ),
   );
 
-  // model files (이 파일들은 media/models/character-male-d 아래에 있어야 합니다)
-  // model files (media/models 바로 아래에 있다고 가정)
-  const modelDir = vscode.Uri.joinPath(ctx.extensionUri, "media", "models");
-
-  const objUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(modelDir, "character-male-d.obj"),
-  );
-  const mtlUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(modelDir, "character-male-d.mtl"),
+  // model files (media/models/<characterId>/model.{obj,mtl} + Textures/*)
+  const characterId = (opts?.characterId || "character-male-d").trim();
+  const modelDir = vscode.Uri.joinPath(
+    ctx.extensionUri,
+    "media",
+    "models",
+    characterId,
   );
 
-  // OBJ는 models 기준으로 읽어도 되고
+  // Loader base path (folder of model.obj/model.mtl)
   const modelBase = webview.asWebviewUri(modelDir).toString() + "/";
 
   // ✅ 텍스처 상대경로는 media 기준으로 풀리게 만드는 게 깔끔함
@@ -242,16 +244,14 @@ meta.textContent = payload.repoPath
     async function loadModel(){
       const mtlLoader = new MTLLoader();
       mtlLoader.setResourcePath("${modelBase}");
-      // Use setPath + relative filenames to avoid path/url concatenation issues in Webview
-      if (typeof mtlLoader.setPath === 'function') mtlLoader.setPath("${modelBase}");
-      const materials = await mtlLoader.loadAsync("character-male-d.mtl");
+      if (typeof mtlLoader.setPath === "function") mtlLoader.setPath("${modelBase}");
+      const materials = await mtlLoader.loadAsync("model.mtl");
       materials.preload();
 
       const objLoader = new OBJLoader();
       objLoader.setMaterials(materials);
       objLoader.setPath("${modelBase}");
-      model = await objLoader.loadAsync("character-male-d.obj");
-
+      model = await objLoader.loadAsync("model.obj");
       // --- Robust placement ---
       // 1) Center the model to origin (prevents camera framing from being off)
       const box0 = new THREE.Box3().setFromObject(model);
@@ -440,6 +440,382 @@ if (hasTarget) camera.lookAt(followTarget);
   </script>
 </body>
 </html>`;
+}
+
+export function getCharacterPickerHtml(
+  webview: vscode.Webview,
+  _context: vscode.ExtensionContext,
+  args: { selected: string },
+) {
+  const n = nonce();
+  const csp = [
+    "default-src 'none'",
+    `img-src ${webview.cspSource} data:`,
+    `style-src ${webview.cspSource} 'unsafe-inline'`,
+    `script-src 'nonce-${n}' ${webview.cspSource}`,
+  ].join("; ");
+
+  const initialSelected = String(args.selected || "character-male-d");
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="${csp}" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Git-Effects Character</title>
+    <style>
+      :root{
+        --bg: var(--vscode-editor-background);
+        --fg: var(--vscode-foreground);
+        --muted: var(--vscode-descriptionForeground);
+        --border: var(--vscode-panel-border);
+        --card: var(--vscode-sideBar-background);
+        --input: var(--vscode-input-background);
+        --inputBorder: var(--vscode-input-border);
+        --btn: var(--vscode-button-background);
+        --btnFg: var(--vscode-button-foreground);
+        --btnHover: var(--vscode-button-hoverBackground);
+        --focus: var(--vscode-focusBorder);
+        --chipBg: var(--vscode-badge-background);
+        --chipFg: var(--vscode-badge-foreground);
+      }
+      *{box-sizing:border-box}
+      html,body{height:100%}
+      body{
+        margin:0;
+        background:var(--bg);
+        color:var(--fg);
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+      }
+      .wrap{min-height:100%;display:flex;flex-direction:column}
+      header{
+        position:sticky;top:0;z-index:10;
+        background:color-mix(in srgb, var(--bg) 88%, transparent);
+        backdrop-filter: blur(8px);
+        border-bottom:1px solid var(--border);
+        padding:14px 14px 10px;
+      }
+      .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+      .brand{display:flex;align-items:center;gap:10px;min-width:0}
+      .logo{width:26px;height:26px;border-radius:999px;background:var(--btn);display:grid;place-items:center;color:var(--btnFg);font-weight:800}
+      .app{font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .actions{display:flex;gap:6px}
+      .iconBtn{border:1px solid transparent;background:transparent;color:var(--muted);border-radius:10px;padding:6px;cursor:pointer}
+      .iconBtn:hover{background:color-mix(in srgb, var(--card) 75%, transparent);color:var(--fg)}
+      h1{margin:10px 0 2px;font-size:20px;letter-spacing:-0.2px}
+      .sub{margin:0;color:var(--muted);font-size:12px}
+
+      .controls{padding:12px 14px 0;display:flex;flex-direction:column;gap:10px}
+      .search{
+        display:flex;align-items:center;gap:8px;
+        background:var(--input);
+        border:1px solid var(--inputBorder, var(--border));
+        border-radius:10px;
+        padding:8px 10px;
+      }
+      .search input{flex:1;border:0;outline:0;background:transparent;color:var(--fg);font-size:13px}
+      .chips{display:flex;gap:8px;overflow:auto;padding-bottom:2px}
+      .chip{
+        border:1px solid var(--border);
+        background:transparent;
+        color:var(--muted);
+        border-radius:999px;
+        padding:6px 10px;
+        font-size:12px;
+        font-weight:650;
+        cursor:pointer;
+        white-space:nowrap;
+      }
+      .chip.active{background:var(--btn);border-color:var(--btn);color:var(--btnFg)}
+      .metaRow{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+
+      main{flex:1;padding:12px 14px 14px;overflow:auto}
+      .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+      @media (max-width:520px){.grid{grid-template-columns:1fr}}
+      .card{
+        background:color-mix(in srgb, var(--card) 88%, transparent);
+        border:1px solid var(--border);
+        border-radius:14px;
+        padding:12px;
+        display:flex;
+        flex-direction:column;
+        gap:10px;
+        min-height:250px;
+        position:relative;
+      }
+      .card:hover{border-color:color-mix(in srgb, var(--focus) 50%, var(--border))}
+      .card.selected{border:2px solid var(--focus);box-shadow:0 0 0 4px color-mix(in srgb, var(--focus) 18%, transparent)}
+      .check{position:absolute;top:10px;right:10px;width:18px;height:18px;border-radius:999px;background:var(--focus);display:none;place-items:center;color:#fff;font-size:12px;font-weight:900}
+      .card.selected .check{display:grid}
+      .preview{flex:1;border-radius:12px;background:color-mix(in srgb, var(--bg) 80%, transparent);border:1px solid color-mix(in srgb, var(--border) 70%, transparent);display:grid;place-items:center;overflow:hidden}
+      .shape{width:64px;height:64px;opacity:.9}
+      .shape.circle{border-radius:999px;background:linear-gradient(135deg,color-mix(in srgb,var(--btn) 80%,#6ea9ff),#6ea9ff)}
+      .shape.rounded{border-radius:16px;background:linear-gradient(135deg,#b66bff,#ff79c6);transform:rotate(12deg)}
+      .shape.capsule{width:68px;height:44px;border-radius:999px;background:linear-gradient(180deg,#4ade80,#10b981)}
+      .shape.square{border-radius:10px;background:linear-gradient(135deg,#fb923c,#ef4444)}
+
+      .name{font-weight:800;font-size:14px;margin:0}
+      .tags{display:flex;flex-wrap:wrap;gap:6px}
+      .tag{font-size:10px;font-weight:800;border-radius:999px;padding:3px 7px;border:1px solid color-mix(in srgb,var(--border) 70%,transparent);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+      .tag.accent{background:color-mix(in srgb,var(--btn) 18%,transparent);border-color:color-mix(in srgb,var(--btn) 38%,transparent);color:color-mix(in srgb,var(--btn) 90%,var(--fg))}
+
+      .btn{width:100%;border-radius:10px;padding:8px 10px;font-size:12px;font-weight:850;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--fg)}
+      .btn.primary{background:var(--btn);border-color:var(--btn);color:var(--btnFg)}
+      .btn.primary:hover{background:var(--btnHover)}
+      .btn.ghost{border-color:color-mix(in srgb,var(--btn) 60%,var(--border));color:color-mix(in srgb,var(--btn) 90%,var(--fg))}
+      .btn.ghost:hover{background:color-mix(in srgb,var(--btn) 10%,transparent)}
+      .btn.disabled{opacity:.55;cursor:default}
+
+      footer{border-top:1px solid var(--border);padding:12px 14px;background:color-mix(in srgb,var(--bg) 86%,transparent)}
+      .footTop{display:flex;align-items:center;justify-content:space-between;gap:10px}
+      .current{display:flex;align-items:center;gap:8px;font-size:12px}
+      .pill{background:var(--chipBg);color:var(--chipFg);padding:3px 8px;border-radius:999px;font-weight:800;font-size:11px}
+      .hint{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px}
+      .links{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--border) 65%,transparent)}
+      a{color:color-mix(in srgb,var(--btn) 95%,var(--fg));text-decoration:none;font-weight:650;font-size:12px}
+      a:hover{text-decoration:underline}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="row">
+          <div class="brand">
+            <div class="logo">G</div>
+            <div class="app">Git-Effects</div>
+          </div>
+          <div class="actions">
+            <button class="iconBtn" id="btnSettings" title="Settings">⚙</button>
+            <button class="iconBtn" id="btnClose" title="Close">✕</button>
+          </div>
+        </div>
+        <h1>Character</h1>
+        <p class="sub">Choose a character for Git actions</p>
+      </header>
+
+      <section class="controls">
+        <div class="search">
+          <span style="color:var(--muted)">⌕</span>
+          <input id="q" type="text" placeholder="Search characters..." />
+        </div>
+        <div class="chips" role="tablist">
+          <button class="chip active" data-filter="all">All</button>
+          <button class="chip" data-filter="free">Free</button>
+          <button class="chip" data-filter="installed">Installed</button>
+          <button class="chip" data-filter="animated">Animated</button>
+        </div>
+        <div class="metaRow">
+          <span>Characters</span>
+          <span title="Not implemented">Sort: Default ▾</span>
+        </div>
+      </section>
+
+      <main>
+        <div id="grid" class="grid"></div>
+      </main>
+
+      <footer>
+        <div class="footTop">
+          <div class="current">
+            <span style="color:var(--muted);font-weight:800">Current:</span>
+            <span id="current" class="pill">${escapeHtml(initialSelected)}</span>
+          </div>
+          <div class="hint"><span>ℹ</span><span>Changes apply instantly</span></div>
+        </div>
+        <div class="links">
+          <a href="#" id="docLink">Documentation ↗</a>
+          <a href="#" id="learnLink">Learn more</a>
+        </div>
+      </footer>
+    </div>
+
+    <script nonce="${n}">
+      const vscode = acquireVsCodeApi();
+      vscode.postMessage({ type: 'getCharacters' });
+
+      let data = [];
+
+      const state = {
+        selected: ${JSON.stringify(initialSelected)},
+        filter: 'all',
+        query: '',
+      };
+      function hashCode(str){
+        let h = 0;
+        for (let i = 0; i < str.length; i++){
+          h = ((h << 5) - h) + str.charCodeAt(i);
+          h |= 0;
+        }
+        return h;
+      }
+      const grid = document.getElementById('grid');
+      const q = document.getElementById('q');
+      const current = document.getElementById('current');
+
+      function matchesFilter(_item){
+        // 현재는 폴더 스캔 기반 목록이라 price/installed/animated 정보가 없음
+        // → 필터 UI는 유지하되, 일단 전체 통과
+        return true;
+      }      
+
+      function matchesQuery(item){
+        const x = (state.query || '').trim().toLowerCase();
+        if (!x) return true;
+        const name = (item.name || item.id || '').toLowerCase();
+        const id = (item.id || '').toLowerCase();
+        return name.includes(x) || id.includes(x);      
+      }
+
+      function render(){
+  const items = data.filter(d => matchesFilter(d) && matchesQuery(d));
+  grid.innerHTML = '';
+
+  for (const it of items){
+    const card = document.createElement('div');
+    card.className = 'card' + (it.id === state.selected ? ' selected' : '');
+    card.setAttribute('data-id', it.id);
+
+    const check = document.createElement('div');
+    check.className = 'check';
+    check.textContent = '✓';
+    card.appendChild(check);
+
+    // ✅ Preview (thumbnailUri 있으면 model.png 보여주기)
+    const preview = document.createElement('div');
+    preview.className = 'preview';
+
+    if (it.thumbnailUri) {
+      const img = document.createElement('img');
+      img.src = it.thumbnailUri;
+      img.alt = it.name || it.id;
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'contain';
+      img.style.padding = '14px';
+      img.style.userSelect = 'none';
+      img.draggable = false;
+      preview.appendChild(img);
+    } else {
+      // fallback: 기존 도형
+      const shape = document.createElement('div');
+      const shapes = ['circle','rounded','capsule','square'];
+      const idx = Math.abs(hashCode(it.id)) % shapes.length;
+      shape.className = 'shape ' + shapes[idx];
+      preview.appendChild(shape);
+    }
+
+    card.appendChild(preview);
+
+    const meta = document.createElement('div');
+    const name = document.createElement('p');
+    name.className = 'name';
+    name.textContent = it.name || it.id;
+
+    const tags = document.createElement('div');
+    tags.className = 'tags';
+    const tagList = Array.isArray(it.tags) ? it.tags : [];
+    for (const t of tagList){
+      const tag = document.createElement('span');
+      tag.className = 'tag' + (String(t).toLowerCase() === 'active' ? ' accent' : '');
+      tag.textContent = t;
+      tags.appendChild(tag);
+    }
+
+    meta.appendChild(name);
+    meta.appendChild(tags);
+    card.appendChild(meta);
+
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    if (it.id === state.selected){
+      btn.classList.add('disabled');
+      btn.textContent = 'Selected';
+      btn.disabled = true;
+    } else {
+      btn.classList.add('primary');
+      btn.textContent = 'Apply';
+    }
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (btn.disabled) return;
+      vscode.postMessage({ type: 'applyCharacter', id: it.id });
+      // UX: 즉시 선택 반영
+      state.selected = it.id;
+      current.textContent = it.id;
+      render();
+    });
+
+    card.addEventListener('click', () => {
+      state.selected = it.id;
+      current.textContent = it.id;
+      render();
+    });
+
+    card.appendChild(btn);
+    grid.appendChild(card);
+  }
+}
+      for (const el of document.querySelectorAll('.chip')){
+        el.addEventListener('click', () => {
+          for (const x of document.querySelectorAll('.chip')) x.classList.remove('active');
+          el.classList.add('active');
+          state.filter = el.getAttribute('data-filter') || 'all';
+          render();
+        });
+      }
+
+      q.addEventListener('input', () => {
+        state.query = q.value;
+        render();
+      });
+
+      document.getElementById('btnClose').addEventListener('click', () => {
+        vscode.postMessage({ type: 'close' });
+        try { window.close(); } catch {}
+      });
+      document.getElementById('btnSettings').addEventListener('click', () => {
+        vscode.postMessage({ type: 'openSettings' });
+      });
+
+      window.addEventListener('message', (event) => {
+        const msg = event.data;
+        if (!msg || typeof msg !== 'object') return;
+
+        if (msg.type === 'state'){
+          state.selected = (msg.selected || 'character-male-d');
+          current.textContent = state.selected;
+          render();
+          return;
+        }
+
+        if (msg.type === 'characters'){
+          // msg.items: [{ id, name, tags? }, ...]
+          data = Array.isArray(msg.items) ? msg.items : [];
+          // 현재 선택이 리스트에 없으면 첫 번째로 보정
+          if (data.length > 0 && !data.some(x => x.id === state.selected)) {
+            state.selected = data[0].id;
+            current.textContent = state.selected;
+          }
+          render();
+          return;
+        }
+      });
+
+      render();
+      vscode.postMessage({ type: 'ready' });
+    </script>
+  </body>
+</html>`;
+}
+
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function nonce() {

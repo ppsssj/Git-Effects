@@ -3,6 +3,7 @@ import type { GitAPI } from "../git/types";
 import { resolveRepo, headInfo } from "../git/repo";
 import { runGit, shortenReason } from "../git/cli";
 import { GitEffectsPanel } from "../panel/GitEffectsPanel";
+import { CharacterPickerPanel } from "../panel/CharacterPickerPanel";
 
 export function registerCommands(args: {
   context: vscode.ExtensionContext;
@@ -24,6 +25,14 @@ export function registerCommands(args: {
         title: "Manual Effect ✅",
         detail: "Command Palette trigger",
       });
+    }),
+  );
+
+  // ✅ Character picker (Command Palette)
+  context.subscriptions.push(
+    vscode.commands.registerCommand("git-effects.selectCharacter", async () => {
+      out.appendLine("[CMD] selectCharacter -> open character picker");
+      CharacterPickerPanel.show(context, out);
     }),
   );
 

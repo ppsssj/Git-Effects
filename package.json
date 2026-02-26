@@ -2,7 +2,7 @@
   "name": "git-effects",
   "displayName": "Git Effects",
   "description": "Git push/pull/commit effects (success/failure) with animated panel.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "engines": {
     "vscode": "^1.109.0"
   },
@@ -16,7 +16,8 @@
     "onCommand:git-effects.helloWorld",
     "onCommand:git-effects.push",
     "onCommand:git-effects.pull",
-    "onCommand:git-effects.commit"
+    "onCommand:git-effects.commit",
+    "onCommand:git-effects.selectCharacter"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -36,6 +37,10 @@
       {
         "command": "git-effects.commit",
         "title": "Git Effects: Commit (accurate mode)"
+      },
+      {
+        "command": "git-effects.selectCharacter",
+        "title": "Git Effects: Select Character"
       }
     ],
     "configuration": {
@@ -50,7 +55,7 @@
           "type": "number",
           "default": 500,
           "minimum": 200,
-          "description": "Auto-detect poll interval (ms)."
+          "description": "Auto-detect poll interval (ms) (Legacy; event-driven auto-detect uses debounceMs)."
         },
         "gitEffects.cooldownMs": {
           "type": "number",
@@ -78,6 +83,12 @@
           "type": "boolean",
           "default": true,
           "description": "Auto-detect commit completion (heuristic)."
+        },
+        "gitEffects.debounceMs": {
+          "type": "number",
+          "default": 1200,
+          "minimum": 0,
+          "description": "Auto-detect debounce interval (ms)."
         }
       }
     }

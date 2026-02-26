@@ -50,6 +50,16 @@
 
 ## Release / Publish Log
 
+- **v0.0.4 (2026-02-26)** — Character Picker 메뉴 + 캐릭터 프리뷰(model.png) + 모델 선택 적용  
+  - Added:
+    - Command Palette: **Git Effects: Select Character**
+    - `media/models/*` 자동 스캔 기반 캐릭터 목록 생성
+    - 각 캐릭터 폴더의 **`model.png`를 메뉴 썸네일로 표시**
+  - Changed:
+    - 이펙트 패널이 선택된 캐릭터 폴더의 `model.obj / model.mtl`을 로드하도록 변경
+  - Notes:
+    - 캐릭터 추가 규약: `media/models/<id>/model.obj`, `model.mtl`, `model.png`, `Textures/*`
+
 - **v0.0.3 (2026-02-25)** — Auto Detect 안정화(이벤트 기반 + 디바운스) + SCM 깜박임 개선  
   - Changed:
     - Auto Detect를 **repo state change(event-driven)** 기반으로 전환
@@ -97,6 +107,9 @@ git-Effects는 결과를 **시각적 피드백(이펙트/캐릭터)** 으로 바
 ---
 
 ## Features
+
+- Command Palette에서 캐릭터 선택: **Git Effects: Select Character**
+- 모델/썸네일 자동 인식(`media/models/*`) + 메뉴 프리뷰(`model.png`)
 
 - 오른쪽 패널(Beside) Webview에 **slide-in** 이펙트 표시
 - 포커스 뺏지 않음: `preserveFocus: true`
@@ -170,6 +183,7 @@ Command Palette(`Ctrl+Shift+P`)에서 아래를 실행합니다.
 - `Git Effects: Push (accurate mode)`
 - `Git Effects: Pull (accurate mode)`
 - `Git Effects: Commit (accurate mode)`
+- `Git Effects: Select Character`
 
 > **중요(정확한 의미):**  
 > 터미널에서 `git push/pull/commit`을 직접 실행해도 **Auto Detect가 켜져 있으면 성공은 감지될 수 있습니다(상태 변화 기반 추정)**.  
@@ -229,6 +243,24 @@ git commit -m "fail: invalid remote"
 ```bash
 git remote set-url origin <원래_URL>
 ```
+
+---
+
+## Character Assets
+
+캐릭터 모델은 아래 규약으로 추가합니다. 폴더명을 그대로 캐릭터 ID로 사용합니다.
+
+```txt
+media/models/<character-id>/
+  model.obj
+  model.mtl
+  model.png       # 메뉴 썸네일(미리보기)
+  Textures/...
+```
+
+- `Git Effects: Select Character`에서 `media/models`를 자동 스캔해 목록을 구성합니다.
+- 이펙트 패널은 선택된 `<character-id>`의 `model.obj / model.mtl`을 로드합니다.
+
 
 ---
 

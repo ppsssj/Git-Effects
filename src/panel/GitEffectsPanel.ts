@@ -30,7 +30,10 @@ export class GitEffectsPanel {
     const instance = new GitEffectsPanel(panel, context);
     GitEffectsPanel.current = instance;
 
-    panel.webview.html = getHtml(panel.webview, context);
+    const selected =
+      context.globalState.get<string>("gitEffects.selectedCharacterId") || "character-male-d";
+
+    panel.webview.html = getHtml(panel.webview, context, { characterId: selected });
     panel.onDidDispose(() => (GitEffectsPanel.current = undefined));
 
     return instance;

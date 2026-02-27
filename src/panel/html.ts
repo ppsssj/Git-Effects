@@ -598,11 +598,10 @@ export function getCharacterPickerHtml(
           <span style="color:var(--muted)">⌕</span>
           <input id="q" type="text" placeholder="Search characters..." />
         </div>
-        <div class="chips" role="tablist">
+        <div class="chips" role="tablist" aria-label="Gender filter">
           <button class="chip active" data-filter="all">All</button>
-          <button class="chip" data-filter="free">Free</button>
-          <button class="chip" data-filter="installed">Installed</button>
-          <button class="chip" data-filter="animated">Animated</button>
+          <button class="chip" data-filter="male">Male</button>
+          <button class="chip" data-filter="female">Female</button>
         </div>
         <div class="metaRow">
           <span>Characters</span>
@@ -652,11 +651,12 @@ export function getCharacterPickerHtml(
       const q = document.getElementById('q');
       const current = document.getElementById('current');
 
-      function matchesFilter(_item){
-        // 현재는 폴더 스캔 기반 목록이라 price/installed/animated 정보가 없음
-        // → 필터 UI는 유지하되, 일단 전체 통과
-        return true;
-      }      
+function matchesFilter(item){
+  const f = state.filter;
+  if (!f || f === 'all') return true;
+  const g = (item && item.gender) ? item.gender : 'other';
+  return g === f;
+}
 
       function matchesQuery(item){
         const x = (state.query || '').trim().toLowerCase();

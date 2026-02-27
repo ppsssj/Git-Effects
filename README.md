@@ -50,6 +50,16 @@
 
 ## Release / Publish Log
 
+- **v0.0.5 (2026-02-27)** — Character Picker 필터 단순화(All/Male/Female) + 캐릭터 확장  
+  - Added:
+    - 성별 기반 필터: **All / Male / Female**
+    - (확장) `media/models` 캐릭터 폴더 추가 반영
+  - Changed:
+    - 기존 탭/필터(Free/Installed/Animated 등)를 제거하고 **성별 중심 탐색 UX**로 정리
+    - 필터 안정화(캐릭터 메타에 `gender`를 포함해 필터 적용 시 “0개 표시” 이슈 방지)
+  - Notes:
+    - 성별 분류 규약: `character-male-*`, `character-female-*` (폴더명 기준)
+
 - **v0.0.4 (2026-02-26)** — Character Picker 메뉴 + 캐릭터 프리뷰(model.png) + 모델 선택 적용  
   - Added:
     - Command Palette: **Git Effects: Select Character**
@@ -109,7 +119,8 @@ git-Effects는 결과를 **시각적 피드백(이펙트/캐릭터)** 으로 바
 ## Features
 
 - Command Palette에서 캐릭터 선택: **Git Effects: Select Character**
-- 모델/썸네일 자동 인식(`media/models/*`) + 메뉴 프리뷰(`model.png`)
+- `media/models/*` 자동 스캔 기반 캐릭터 목록 생성 + 메뉴 프리뷰(`model.png`)
+- Character Picker에서 **All / Male / Female** 필터로 빠른 탐색
 
 - 오른쪽 패널(Beside) Webview에 **slide-in** 이펙트 표시
 - 포커스 뺏지 않음: `preserveFocus: true`
@@ -259,6 +270,7 @@ media/models/<character-id>/
 ```
 
 - `Git Effects: Select Character`에서 `media/models`를 자동 스캔해 목록을 구성합니다.
+- Character Picker에서 폴더명 규약(`character-male-*`, `character-female-*`)을 기반으로 **All/Male/Female** 필터가 동작합니다.
 - 이펙트 패널은 선택된 `<character-id>`의 `model.obj / model.mtl`을 로드합니다.
 
 

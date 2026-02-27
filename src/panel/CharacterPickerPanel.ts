@@ -8,10 +8,11 @@ const DEFAULT_CHARACTER_ID = "character-male-d";
 export type CharacterId = string;
 
 export type CharacterItem = {
-  id: string;   // folder name under media/models
-  name: string; // display name (same as id for now)
+  id: string;
+  name: string;
   tags?: string[];
-  thumbnailUri?: string; // ✅ webview에서 렌더링할 이미지 URI
+  thumbnailUri?: string;
+  gender?: "male" | "female" | "other"; // ✅ 추가
 };
 
 export class CharacterPickerPanel {
@@ -90,17 +91,21 @@ export class CharacterPickerPanel {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "media")],
+        localResourceRoots: [
+          vscode.Uri.joinPath(context.extensionUri, "media"),
+        ],
       },
     );
 
     const instance = new CharacterPickerPanel(panel, context, out);
     CharacterPickerPanel.current = instance;
 
-    const selected =
-      (context.globalState.get<string>(STATE_KEY) || DEFAULT_CHARACTER_ID) as CharacterId;
+    const selected = (context.globalState.get<string>(STATE_KEY) ||
+      DEFAULT_CHARACTER_ID) as CharacterId;
 
-    panel.webview.html = getCharacterPickerHtml(panel.webview, context, { selected });
+    panel.webview.html = getCharacterPickerHtml(panel.webview, context, {
+      selected,
+    });
 
     panel.onDidDispose(() => (CharacterPickerPanel.current = undefined));
 
@@ -109,8 +114,8 @@ export class CharacterPickerPanel {
   }
 
   private postState() {
-    const selected =
-      (this.context.globalState.get<string>(STATE_KEY) || DEFAULT_CHARACTER_ID) as CharacterId;
+    const selected = (this.context.globalState.get<string>(STATE_KEY) ||
+      DEFAULT_CHARACTER_ID) as CharacterId;
     this.panel.webview.postMessage({ type: "state", selected });
   }
 
@@ -133,7 +138,11 @@ export class CharacterPickerPanel {
    * media/models/<id>/model.png (optional thumbnail)
    */
   private async scanCharacters(): Promise<CharacterItem[]> {
-    const modelsDir = vscode.Uri.joinPath(this.context.extensionUri, "media", "models");
+    const modelsDir = vscode.Uri.joinPath(
+      this.context.extensionUri,
+      "media",
+      "models",
+    );
 
     let entries: [string, vscode.FileType][];
     try {
@@ -157,7 +166,12 @@ export class CharacterPickerPanel {
       const okObj = await exists(obj);
       const okMtl = await exists(mtl);
       if (!okObj || !okMtl) continue;
-
+      const lower = id.toLowerCase();
+      const gender: "male" | "female" | "other" = lower.includes("female")
+        ? "female"
+        : lower.includes("male")
+          ? "male"
+          : "other";
       // ✅ 썸네일(model.png) 있으면 webview URI로 전달
       const png = vscode.Uri.joinPath(dir, "model.png");
       const okPng = await exists(png);
@@ -165,7 +179,7 @@ export class CharacterPickerPanel {
         ? this.panel.webview.asWebviewUri(png).toString()
         : undefined;
 
-      items.push({ id, name: id, tags: [], thumbnailUri });
+      items.push({ id, name: id, tags: [], thumbnailUri, gender });
     }
 
     items.sort((a, b) => a.id.localeCompare(b.id));

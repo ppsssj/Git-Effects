@@ -2,7 +2,7 @@
   "name": "git-effects",
   "displayName": "Git Effects",
   "description": "Git push/pull/commit effects (success/failure) with animated panel.",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "engines": {
     "vscode": "^1.109.0"
   },

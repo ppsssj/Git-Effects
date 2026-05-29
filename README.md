@@ -95,12 +95,17 @@
 
 ### Commit
 <p align="center">
-  <img src="assets/demo/commit_demo.gif" alt="git-Effects commit demo" width="900" />
+  <img src="assets/demo/git_effect.gif" alt="git-Effects commit demo" width="900" />
 </p>
 
 ### Push
 <p align="center">
-  <img src="assets/demo/push_demo.gif" alt="git-Effects push demo" width="900" />
+  <img src="assets/demo/git_effect2.gif" alt="git-Effects push demo" width="900" />
+</p>
+
+### Ctrl + Shift + p >> Git Effetct: Select Character
+<p align="center">
+  <img src="assets/demo/Git_Effect_CharacterSelect.png" alt="git-Effects push demo"  />
 </p>
 
 ---

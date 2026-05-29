@@ -103,7 +103,7 @@
   <img src="assets/demo/git_effect2.gif" alt="git-Effects push demo" width="900" />
 </p>
 
-### Ctrl + Shift + p >> Git Effetct: Select Character
+### Ctrl + Shift + p >> Git Effects: Select Character
 <p align="center">
   <img src="assets/demo/Git_Effect_CharacterSelect.png" alt="git-Effects push demo"  />
 </p>

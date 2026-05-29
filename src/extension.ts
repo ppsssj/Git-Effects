@@ -13,10 +13,11 @@ export function activate(context: vscode.ExtensionContext) {
   if (!gitExt) {
     vscode.window.showWarningMessage("vscode.git 확장을 찾지 못했습니다.");
     out.appendLine("[ERR] vscode.git not found -> abort");
+    registerCommands({ context, out });
     return;
   }
 
-  gitExt.activate().then(
+  return gitExt.activate().then(
     () => {
       out.appendLine("vscode.git activate() resolved");
       const git = gitExt.exports.getAPI(1);
@@ -32,6 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
     (e) => {
       const msg = e instanceof Error ? e.message : String(e);
       out.appendLine(`[ERR] vscode.git activate failed: ${msg}`);
+      registerCommands({ context, out });
       vscode.window.showErrorMessage(`vscode.git activate failed: ${msg}`);
     },
   );

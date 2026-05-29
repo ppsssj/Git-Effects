@@ -50,6 +50,16 @@
 
 ## Release / Publish Log
 
+- **v0.0.7 (2026-05-29)** — Character Picker 로고/명령 활성화/캐릭터 즉시 반영 개선
+  - Fixed:
+    - `Git Effects: Select Character`가 Git 확장 활성화 타이밍에 따라 `command not found`로 실패할 수 있던 문제를 수정
+    - 캐릭터 변경 직후 기존 이펙트 패널이 이전 모델을 유지해 선택한 캐릭터가 한 박자 늦게 나올 수 있던 문제를 수정
+    - Webview 스크립트가 준비되기 전에 이펙트 메시지가 전달될 수 있던 레이스 조건을 수정
+  - Changed:
+    - Character Picker 헤더 로고를 임시 `G` 배지에서 `assets/icon.png`로 교체
+    - 선택 캐릭터가 바뀌면 이펙트 패널을 새로 만들어 최신 모델을 즉시 로드하도록 변경
+    - README의 Select Character 데모 제목/alt 텍스트 정리
+
 - **v0.0.5 (2026-02-27)** — Character Picker 필터 단순화(All/Male/Female) + 캐릭터 확장  
   - Added:
     - 성별 기반 필터: **All / Male / Female**
@@ -103,9 +113,9 @@
   <img src="assets/demo/git_effect2.gif" alt="git-Effects push demo" width="900" />
 </p>
 
-### Ctrl + Shift + p >> Git Effects: Select Character
+### Ctrl + Shift + P > Git Effects: Select Character
 <p align="center">
-  <img src="assets/demo/Git_Effect_CharacterSelect.png" alt="git-Effects push demo"  />
+  <img src="assets/demo/Git_Effect_CharacterSelect.png" alt="git-Effects character selection demo" />
 </p>
 
 ---

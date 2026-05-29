@@ -93,6 +93,7 @@ export class CharacterPickerPanel {
         retainContextWhenHidden: true,
         localResourceRoots: [
           vscode.Uri.joinPath(context.extensionUri, "media"),
+          vscode.Uri.joinPath(context.extensionUri, "assets"),
         ],
       },
     );

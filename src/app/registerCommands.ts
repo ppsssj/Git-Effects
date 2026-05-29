@@ -8,7 +8,7 @@ import { CharacterPickerPanel } from "../panel/CharacterPickerPanel";
 export function registerCommands(args: {
   context: vscode.ExtensionContext;
   out: vscode.OutputChannel;
-  git: GitAPI;
+  git?: GitAPI;
 }) {
   const { context, out, git } = args;
 
@@ -38,6 +38,9 @@ export function registerCommands(args: {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("git-effects.push", async () => {
+      if (!git) {
+        return vscode.window.showWarningMessage("VS Code Git extension is not available.");
+      }
       const repo = resolveRepo(git, out);
       if (!repo) return vscode.window.showWarningMessage("Git repository를 찾지 못했습니다.");
       const hi = headInfo(repo);
@@ -58,6 +61,9 @@ export function registerCommands(args: {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("git-effects.pull", async () => {
+      if (!git) {
+        return vscode.window.showWarningMessage("VS Code Git extension is not available.");
+      }
       const repo = resolveRepo(git, out);
       if (!repo) return vscode.window.showWarningMessage("Git repository를 찾지 못했습니다.");
       const hi = headInfo(repo);
@@ -78,6 +84,9 @@ export function registerCommands(args: {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("git-effects.commit", async () => {
+      if (!git) {
+        return vscode.window.showWarningMessage("VS Code Git extension is not available.");
+      }
       const repo = resolveRepo(git, out);
       if (!repo) return vscode.window.showWarningMessage("Git repository를 찾지 못했습니다.");
       const hi = headInfo(repo);

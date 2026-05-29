@@ -3,22 +3,56 @@ import { getHtml } from "./html";
 import type { EffectPayload } from "../effects/types";
 
 const PANEL_VIEWTYPE = "gitEffectsPanel";
+const STATE_KEY = "gitEffects.selectedCharacterId";
+const DEFAULT_CHARACTER_ID = "character-male-d";
 
 export class GitEffectsPanel {
   private static current: GitEffectsPanel | undefined;
   private static lastFireMs = 0;
 
+  private ready = false;
+  private pendingPayload: EffectPayload | undefined;
+
   private constructor(
     private readonly panel: vscode.WebviewPanel,
     private readonly context: vscode.ExtensionContext,
-  ) {}
+    private readonly characterId: string,
+    private readonly out: vscode.OutputChannel,
+  ) {
+    this.panel.webview.onDidReceiveMessage(
+      (msg) => {
+        if (!msg || typeof msg !== "object") return;
+        if ((msg as any).type !== "ready") return;
 
-  static getOrCreate(context: vscode.ExtensionContext): GitEffectsPanel {
-    if (GitEffectsPanel.current) return GitEffectsPanel.current;
+        this.ready = true;
+        if (this.pendingPayload) {
+          const payload = this.pendingPayload;
+          this.pendingPayload = undefined;
+          this.postEffect(payload);
+        }
+      },
+      undefined,
+      this.context.subscriptions,
+    );
+  }
+
+  static getOrCreate(
+    context: vscode.ExtensionContext,
+    out: vscode.OutputChannel,
+  ): GitEffectsPanel {
+    const selected = GitEffectsPanel.getSelectedCharacterId(context);
+
+    if (GitEffectsPanel.current) {
+      if (GitEffectsPanel.current.characterId === selected) {
+        return GitEffectsPanel.current;
+      }
+
+      GitEffectsPanel.current.dispose();
+    }
 
     const panel = vscode.window.createWebviewPanel(
       PANEL_VIEWTYPE,
-      " ", // 제목 최소화
+      " ",
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
       {
         enableScripts: true,
@@ -27,28 +61,20 @@ export class GitEffectsPanel {
       },
     );
 
-    const instance = new GitEffectsPanel(panel, context);
+    const instance = new GitEffectsPanel(panel, context, selected, out);
     GitEffectsPanel.current = instance;
 
-    const selected =
-      context.globalState.get<string>("gitEffects.selectedCharacterId") || "character-male-d";
-
     panel.webview.html = getHtml(panel.webview, context, { characterId: selected });
-    panel.onDidDispose(() => (GitEffectsPanel.current = undefined));
+    panel.onDidDispose(() => {
+      if (GitEffectsPanel.current === instance) {
+        GitEffectsPanel.current = undefined;
+      }
+    });
 
     return instance;
   }
 
-  /**
-   * 외부에서는 panel 인스턴스를 오래 들고 있지 말고, 호출 시점에 확보하도록.
-   * (dispose 이후에도 정상 동작 + activate 시점에 패널이 뜨는 문제 방지)
-   */
   static fire(context: vscode.ExtensionContext, out: vscode.OutputChannel, payload: EffectPayload) {
-    const panel = GitEffectsPanel.getOrCreate(context);
-    panel.fireEffect(out, payload);
-  }
-
-  fireEffect(out: vscode.OutputChannel, payload: EffectPayload) {
     const cfg = vscode.workspace.getConfiguration("gitEffects");
     const enabled = cfg.get<boolean>("enabled", true);
     if (!enabled) return;
@@ -58,30 +84,45 @@ export class GitEffectsPanel {
     if (now - GitEffectsPanel.lastFireMs < cooldownMs) return;
     GitEffectsPanel.lastFireMs = now;
 
+    const panel = GitEffectsPanel.getOrCreate(context, out);
+    panel.fireEffect(payload, cfg.get<number>("durationMs", 2200));
+  }
+
+  private static getSelectedCharacterId(context: vscode.ExtensionContext) {
+    return context.globalState.get<string>(STATE_KEY) || DEFAULT_CHARACTER_ID;
+  }
+
+  private fireEffect(payload: EffectPayload, durationMs: number) {
     this.panel.reveal(vscode.ViewColumn.Beside, true);
 
-    out.appendLine(
+    this.out.appendLine(
       `[EFFECT] ${payload.kind.toUpperCase()} ${payload.event} :: ${payload.title} :: ${payload.branch ?? "?"} -> ${
         payload.upstream ?? "?"
-      }`,
+      } :: character=${this.characterId}`,
     );
 
-    // webview가 아직 준비 전일 수 있어 예외 방어
+    if (this.ready) {
+      this.postEffect(payload);
+    } else {
+      this.pendingPayload = payload;
+    }
+
+    setTimeout(() => this.dispose(), durationMs);
+  }
+
+  private postEffect(payload: EffectPayload) {
     try {
       this.panel.webview.postMessage({ type: "effect", payload });
     } catch (e) {
-      out.appendLine(`[ERR] postMessage failed: ${e instanceof Error ? e.message : String(e)}`);
+      this.out.appendLine(`[ERR] postMessage failed: ${e instanceof Error ? e.message : String(e)}`);
     }
+  }
 
-    const durationMs = cfg.get<number>("durationMs", 2200);
-    setTimeout(() => {
-      // 탭이 계속 누적되는 걸 막기 위해 기본값은 dispose
-      // 다음 이펙트 발생 시 getOrCreate()가 새 패널을 생성함
-      try {
-        this.panel.dispose();
-      } catch {
-        // noop
-      }
-    }, durationMs);
+  private dispose() {
+    try {
+      this.panel.dispose();
+    } catch {
+      // noop
+    }
   }
 }

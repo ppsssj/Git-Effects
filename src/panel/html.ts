@@ -108,6 +108,7 @@ export function getHtml(
     import { MTLLoader } from "${mtlLoaderUri}";
 
     console.log("[git-effects] webview script boot");
+    const vscode = acquireVsCodeApi();
     const hud = document.getElementById('hud');
     const title = document.getElementById('t');
     const meta = document.getElementById('m');
@@ -437,6 +438,7 @@ if (hasTarget) camera.lookAt(followTarget);
       showHud(payload);
       startAnim(payload.kind || 'info', payload.event || 'manual');
     });
+    vscode.postMessage({ type: 'ready' });
   </script>
 </body>
 </html>`;
@@ -444,7 +446,7 @@ if (hasTarget) camera.lookAt(followTarget);
 
 export function getCharacterPickerHtml(
   webview: vscode.Webview,
-  _context: vscode.ExtensionContext,
+  context: vscode.ExtensionContext,
   args: { selected: string },
 ) {
   const n = nonce();
@@ -456,6 +458,9 @@ export function getCharacterPickerHtml(
   ].join("; ");
 
   const initialSelected = String(args.selected || "character-male-d");
+  const iconUri = webview
+    .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "assets", "icon.png"))
+    .toString();
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -497,7 +502,7 @@ export function getCharacterPickerHtml(
       }
       .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
       .brand{display:flex;align-items:center;gap:10px;min-width:0}
-      .logo{width:26px;height:26px;border-radius:999px;background:var(--btn);display:grid;place-items:center;color:var(--btnFg);font-weight:800}
+      .logo{width:26px;height:26px;border-radius:6px;display:block;object-fit:contain;flex:0 0 auto}
       .app{font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .actions{display:flex;gap:6px}
       .iconBtn{border:1px solid transparent;background:transparent;color:var(--muted);border-radius:10px;padding:6px;cursor:pointer}
@@ -581,7 +586,7 @@ export function getCharacterPickerHtml(
       <header>
         <div class="row">
           <div class="brand">
-            <div class="logo">G</div>
+            <img class="logo" src="${iconUri}" alt="Git Effects" />
             <div class="app">Git-Effects</div>
           </div>
           <div class="actions">

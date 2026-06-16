@@ -4,6 +4,7 @@ import { resolveRepo, headInfo } from "../git/repo";
 import { runGit, shortenReason } from "../git/cli";
 import { GitEffectsPanel } from "../panel/GitEffectsPanel";
 import { CharacterPickerPanel } from "../panel/CharacterPickerPanel";
+import { ACTION_OPTIONS } from "../effects/actions";
 
 export function registerCommands(args: {
   context: vscode.ExtensionContext;
@@ -33,6 +34,36 @@ export function registerCommands(args: {
     vscode.commands.registerCommand("git-effects.selectCharacter", async () => {
       out.appendLine("[CMD] selectCharacter -> open character picker");
       CharacterPickerPanel.show(context, out);
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("git-effects.previewAction", async () => {
+      const picked = await vscode.window.showQuickPick(
+        ACTION_OPTIONS.map((action) => ({
+          label: action.label,
+          description: action.id,
+          actionId: action.id,
+        })),
+        {
+          placeHolder: "Preview a Git Effects action",
+          ignoreFocusOut: true,
+        },
+      );
+      if (!picked) {
+        return;
+      }
+
+      const repoPath = wsf[0] ?? "(no workspace)";
+      out.appendLine(`[CMD] previewAction -> ${picked.actionId}`);
+      GitEffectsPanel.fire(context, out, {
+        kind: picked.actionId === "shakeNo" ? "error" : "info",
+        event: "manual",
+        actionId: picked.actionId,
+        repoPath,
+        title: `Preview: ${picked.label}`,
+        detail: "Action preview from Command Palette",
+      });
     }),
   );
 

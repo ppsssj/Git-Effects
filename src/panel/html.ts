@@ -296,18 +296,25 @@ meta.textContent = payload.repoPath
       t0: performance.now(),
       kind: 'info',
       event: 'manual',
+      actionId: 'pop',
       actMs: 900,
     };
 
-    function startAnim(kind, event){
+    function startAnim(kind, event, actionId){
       state.kind = kind || 'info';
       state.event = event || 'manual';
+      state.actionId = actionId || (
+        state.kind === 'error' ? 'shakeNo' :
+        state.event === 'commit' ? 'nod' :
+        state.event === 'push' ? 'jumpSpin' :
+        'pop'
+      );
 
-      // Priority: error kind always uses fail signature.
-      if (state.kind === 'error') state.actMs = 1700;            // 1.4~1.8s
-      else if (state.event === 'commit') state.actMs = 780;      // 0.6~0.9s
-      else if (state.event === 'push') state.actMs = 1450;       // 1.2~1.6s
-      else state.actMs = 950;                                    // default
+      if (state.actionId === 'shakeNo') state.actMs = 1700;
+      else if (state.actionId === 'nod') state.actMs = 780;
+      else if (state.actionId === 'jumpSpin') state.actMs = 1450;
+      else if (state.actionId === 'slide') state.actMs = 1100;
+      else state.actMs = 950;
 
       state.phase = 'enter';
       state.t0 = performance.now();
@@ -344,8 +351,8 @@ meta.textContent = payload.repoPath
       } else if (state.phase === 'act'){
         const tt = clamp01(t / state.actMs);
 
-        // ---- Error / Fail signature ----
-        if (state.kind === 'error'){
+        // ---- Shake No / Fail signature ----
+        if (state.actionId === 'shakeNo'){
           // Step back quickly, then shake "no" + slight crouch/shrink.
           const step = easeOutCubic(clamp01(tt / 0.35));
           model.position.z += lerp(0.0, -0.18, step);
@@ -364,8 +371,8 @@ meta.textContent = payload.repoPath
           if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
         }
 
-        // ---- Commit: nod twice + very short forward "툭" ----
-        else if (state.event === 'commit'){
+        // ---- Nod twice + very short forward "툭" ----
+        else if (state.actionId === 'nod'){
           const env = Math.sin(Math.PI * tt); // 0..1..0
           const nod = -Math.sin(tt * Math.PI * 4) * 0.12 * env; // 2 nods
           model.rotation.x += nod;
@@ -383,8 +390,8 @@ meta.textContent = payload.repoPath
           if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
         }
 
-        // ---- Push Success: jump + landing bounce + 180~360 spin ----
-        else if (state.event === 'push'){
+        // ---- Jump + landing bounce + 180~360 spin ----
+        else if (state.actionId === 'jumpSpin'){
           const spin = THREE.MathUtils.degToRad(320); // ~320°
           model.rotation.y += spin * easeOutCubic(tt);
 
@@ -412,7 +419,20 @@ meta.textContent = payload.repoPath
           if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
         }
 
-        // ---- Default / Pull / Manual: subtle pop ----
+        // ---- Slide: quick side-to-side flourish ----
+        else if (state.actionId === 'slide'){
+          const e = easeInOutSine(tt);
+          const env = Math.sin(Math.PI * tt);
+          model.position.x += Math.sin(tt * Math.PI * 2) * 0.22 * env;
+          model.rotation.z += Math.sin(tt * Math.PI * 2) * 0.16 * env;
+          model.position.y += env * 0.06;
+          model.scale.y *= (1.0 - 0.04 * env);
+          model.scale.x *= (1.0 + 0.03 * env);
+          model.rotation.y += THREE.MathUtils.degToRad(35) * e;
+          if (tt >= 1){ state.phase = 'exit'; state.t0 = now; }
+        }
+
+        // ---- Pop / Default: subtle pop ----
         else {
           const env = Math.sin(Math.PI * tt);
           model.position.y += env * 0.10;
@@ -436,7 +456,7 @@ if (hasTarget) camera.lookAt(followTarget);
       if (!msg || msg.type !== 'effect') return;
       const payload = msg.payload || {};
       showHud(payload);
-      startAnim(payload.kind || 'info', payload.event || 'manual');
+      startAnim(payload.kind || 'info', payload.event || 'manual', payload.actionId || '');
     });
     vscode.postMessage({ type: 'ready' });
   </script>
@@ -447,7 +467,11 @@ if (hasTarget) camera.lookAt(followTarget);
 export function getCharacterPickerHtml(
   webview: vscode.Webview,
   context: vscode.ExtensionContext,
-  args: { selected: string },
+  args: {
+    selected: string;
+    actionMap?: Record<string, string>;
+    actionOptions?: readonly { id: string; label: string }[];
+  },
 ) {
   const n = nonce();
   const csp = [
@@ -458,6 +482,8 @@ export function getCharacterPickerHtml(
   ].join("; ");
 
   const initialSelected = String(args.selected || "character-male-d");
+  const initialActionMap = args.actionMap ?? {};
+  const actionOptions = args.actionOptions ?? [];
   const iconUri = webview
     .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "assets", "icon.png"))
     .toString();
@@ -510,7 +536,28 @@ export function getCharacterPickerHtml(
       h1{margin:10px 0 2px;font-size:20px;letter-spacing:-0.2px}
       .sub{margin:0;color:var(--muted);font-size:12px}
 
-      .controls{padding:12px 14px 0;display:flex;flex-direction:column;gap:10px}
+      .controls{padding:16px 14px 0;display:flex;flex-direction:column;gap:12px}
+      .sectionHead{display:flex;align-items:center;justify-content:space-between;gap:12px}
+      .sectionTitle{margin:0;font-size:14px;font-weight:850;color:var(--fg)}
+      .sectionNote{margin:3px 0 0;color:var(--muted);font-size:11px;line-height:1.35}
+      .sectionBadge{
+        flex:0 0 auto;
+        border:1px solid var(--border);
+        border-radius:999px;
+        color:var(--muted);
+        background:color-mix(in srgb, var(--card) 58%, transparent);
+        padding:4px 8px;
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.02em;
+        white-space:nowrap;
+      }
+      .libraryTools{
+        display:grid;
+        grid-template-columns:minmax(0,1fr) auto;
+        align-items:center;
+        gap:10px;
+      }
       .search{
         display:flex;align-items:center;gap:8px;
         background:var(--input);
@@ -533,6 +580,61 @@ export function getCharacterPickerHtml(
       }
       .chip.active{background:var(--btn);border-color:var(--btn);color:var(--btnFg)}
       .metaRow{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+      .actionSettings{
+        margin-top:0;
+        padding:14px;
+        display:flex;
+        flex-direction:column;
+        gap:12px;
+        border-top:1px solid color-mix(in srgb,var(--border) 75%,transparent);
+        border-bottom:1px solid color-mix(in srgb,var(--border) 75%,transparent);
+        background:color-mix(in srgb, var(--card) 24%, transparent);
+      }
+      .actionSettings + .controls{padding-top:16px}
+      .actionGrid{display:grid;grid-template-columns:1fr;gap:8px}
+      .actionControl{
+        display:grid;
+        grid-template-columns:minmax(118px,.42fr) minmax(180px,1fr) auto;
+        align-items:center;
+        gap:10px;
+        background:color-mix(in srgb, var(--bg) 68%, var(--card));
+        border:1px solid var(--border);
+        border-radius:8px;
+        padding:10px;
+      }
+      .actionControl label{display:flex;flex-direction:column;gap:2px;min-width:0}
+      .actionName{font-size:12px;font-weight:850;color:var(--fg)}
+      .actionHint{font-size:11px;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .actionControl select{
+        width:100%;
+        min-width:0;
+        border:1px solid var(--inputBorder, var(--border));
+        background:var(--input);
+        color:var(--fg);
+        border-radius:8px;
+        padding:7px 8px;
+        font-size:12px;
+      }
+      .previewActionBtn{
+        border:1px solid color-mix(in srgb,var(--btn) 60%,var(--border));
+        background:transparent;
+        color:color-mix(in srgb,var(--btn) 90%,var(--fg));
+        border-radius:8px;
+        padding:7px 9px;
+        font-size:11px;
+        font-weight:850;
+        cursor:pointer;
+        white-space:nowrap;
+      }
+      .previewActionBtn:hover{background:color-mix(in srgb,var(--btn) 10%,transparent)}
+      @media (max-width:520px){
+        .sectionHead{align-items:flex-start}
+        .libraryTools{grid-template-columns:1fr}
+        .chips{padding-bottom:0}
+        .actionControl{grid-template-columns:1fr auto}
+        .actionControl label{grid-column:1 / -1}
+        .previewActionBtn{grid-column:2}
+      }
 
       main{flex:1;padding:12px 14px 14px;overflow:auto}
       .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -598,19 +700,34 @@ export function getCharacterPickerHtml(
         <p class="sub">Choose a character for Git actions</p>
       </header>
 
+      <section class="actionSettings">
+        <div class="sectionHead">
+          <div>
+            <h2 class="sectionTitle">Action Preview</h2>
+            <p class="sectionNote">Assign an animation to each Git result</p>
+          </div>
+          <span class="sectionBadge">Auto saved</span>
+        </div>
+        <div id="actionGrid" class="actionGrid"></div>
+      </section>
+
       <section class="controls">
-        <div class="search">
-          <span style="color:var(--muted)">⌕</span>
-          <input id="q" type="text" placeholder="Search characters..." />
+        <div class="sectionHead">
+          <div>
+            <h2 class="sectionTitle">Character Library</h2>
+            <p class="sectionNote">Pick the model used by every effect</p>
+          </div>
         </div>
-        <div class="chips" role="tablist" aria-label="Gender filter">
-          <button class="chip active" data-filter="all">All</button>
-          <button class="chip" data-filter="male">Male</button>
-          <button class="chip" data-filter="female">Female</button>
-        </div>
-        <div class="metaRow">
-          <span>Characters</span>
-          <span title="Not implemented">Sort: Default ▾</span>
+        <div class="libraryTools">
+          <div class="search">
+            <span style="color:var(--muted)">⌕</span>
+            <input id="q" type="text" placeholder="Search characters..." />
+          </div>
+          <div class="chips" role="tablist" aria-label="Gender filter">
+            <button class="chip active" data-filter="all">All</button>
+            <button class="chip" data-filter="male">Male</button>
+            <button class="chip" data-filter="female">Female</button>
+          </div>
         </div>
       </section>
 
@@ -643,6 +760,8 @@ export function getCharacterPickerHtml(
         selected: ${JSON.stringify(initialSelected)},
         filter: 'all',
         query: '',
+        actionMap: ${JSON.stringify(initialActionMap)},
+        actionOptions: ${JSON.stringify(actionOptions)},
       };
       function hashCode(str){
         let h = 0;
@@ -653,6 +772,7 @@ export function getCharacterPickerHtml(
         return h;
       }
       const grid = document.getElementById('grid');
+      const actionGrid = document.getElementById('actionGrid');
       const q = document.getElementById('q');
       const current = document.getElementById('current');
 
@@ -669,6 +789,86 @@ function matchesFilter(item){
         const name = (item.name || item.id || '').toLowerCase();
         const id = (item.id || '').toLowerCase();
         return name.includes(x) || id.includes(x);      
+      }
+
+      const actionTargets = [
+        { id: 'push', label: 'Push', hint: 'Upload success' },
+        { id: 'pull', label: 'Pull', hint: 'Download success' },
+        { id: 'commit', label: 'Commit', hint: 'Local snapshot' },
+        { id: 'error', label: 'Error', hint: 'Failed command' },
+      ];
+      const fallbackActions = [
+        { id: 'pop', label: 'Pop' },
+        { id: 'jumpSpin', label: 'Jump + Spin' },
+        { id: 'nod', label: 'Nod' },
+        { id: 'shakeNo', label: 'Shake No' },
+        { id: 'slide', label: 'Slide' },
+      ];
+
+      function actionOptions(){
+        return Array.isArray(state.actionOptions) && state.actionOptions.length > 0
+          ? state.actionOptions
+          : fallbackActions;
+      }
+
+      function renderActions(){
+        actionGrid.innerHTML = '';
+
+        for (const target of actionTargets){
+          const wrap = document.createElement('div');
+          wrap.className = 'actionControl';
+
+          const label = document.createElement('label');
+          label.setAttribute('for', 'action-' + target.id);
+
+          const labelName = document.createElement('span');
+          labelName.className = 'actionName';
+          labelName.textContent = target.label;
+
+          const labelHint = document.createElement('span');
+          labelHint.className = 'actionHint';
+          labelHint.textContent = target.hint;
+
+          label.appendChild(labelName);
+          label.appendChild(labelHint);
+
+          const select = document.createElement('select');
+          select.id = 'action-' + target.id;
+
+          for (const option of actionOptions()){
+            const el = document.createElement('option');
+            el.value = option.id;
+            el.textContent = option.label || option.id;
+            select.appendChild(el);
+          }
+
+          select.value = state.actionMap[target.id] || '';
+          select.addEventListener('change', () => {
+            state.actionMap[target.id] = select.value;
+            vscode.postMessage({
+              type: 'applyAction',
+              target: target.id,
+              actionId: select.value,
+            });
+          });
+
+          const preview = document.createElement('button');
+          preview.type = 'button';
+          preview.className = 'previewActionBtn';
+          preview.textContent = 'Preview';
+          preview.addEventListener('click', () => {
+            vscode.postMessage({
+              type: 'previewAction',
+              target: target.id,
+              actionId: select.value,
+            });
+          });
+
+          wrap.appendChild(label);
+          wrap.appendChild(select);
+          wrap.appendChild(preview);
+          actionGrid.appendChild(wrap);
+        }
       }
 
       function render(){
@@ -789,7 +989,10 @@ function matchesFilter(item){
 
         if (msg.type === 'state'){
           state.selected = (msg.selected || 'character-male-d');
+          state.actionMap = msg.actionMap || state.actionMap || {};
+          state.actionOptions = Array.isArray(msg.actionOptions) ? msg.actionOptions : state.actionOptions;
           current.textContent = state.selected;
+          renderActions();
           render();
           return;
         }
@@ -808,6 +1011,7 @@ function matchesFilter(item){
       });
 
       render();
+      renderActions();
       vscode.postMessage({ type: 'ready' });
     </script>
   </body>

@@ -4,6 +4,7 @@ export type EffectEvent = "push" | "pull" | "commit" | "manual";
 export type EffectPayload = {
   kind: EffectKind;
   event: EffectEvent;
+  actionId?: string;
   repoPath?: string;
   branch?: string;
   upstream?: string;

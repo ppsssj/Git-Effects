@@ -2,7 +2,7 @@
   "name": "git-effects",
   "displayName": "Git Effects",
   "description": "Git push/pull/commit effects (success/failure) with animated panel.",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "engines": {
     "vscode": "^1.109.0"
   },
@@ -17,7 +17,8 @@
     "onCommand:git-effects.push",
     "onCommand:git-effects.pull",
     "onCommand:git-effects.commit",
-    "onCommand:git-effects.selectCharacter"
+    "onCommand:git-effects.selectCharacter",
+    "onCommand:git-effects.previewAction"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -41,6 +42,10 @@
       {
         "command": "git-effects.selectCharacter",
         "title": "Git Effects: Select Character"
+      },
+      {
+        "command": "git-effects.previewAction",
+        "title": "Git Effects: Preview Action"
       }
     ],
     "configuration": {

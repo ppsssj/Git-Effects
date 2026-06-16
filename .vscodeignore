@@ -12,6 +12,7 @@
 **/.prettierrc*
 **/prettier*
 **/*.log
+**/*.vsix
 **/test/**
 **/__tests__/**
 **/*.spec.*

@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import { getHtml } from "./html";
 import type { EffectPayload } from "../effects/types";
+import {
+  ACTION_STATE_KEY,
+  normalizeActionMap,
+  resolveActionId,
+} from "../effects/actions";
 
 const PANEL_VIEWTYPE = "gitEffectsPanel";
 const STATE_KEY = "gitEffects.selectedCharacterId";
@@ -77,15 +82,27 @@ export class GitEffectsPanel {
   static fire(context: vscode.ExtensionContext, out: vscode.OutputChannel, payload: EffectPayload) {
     const cfg = vscode.workspace.getConfiguration("gitEffects");
     const enabled = cfg.get<boolean>("enabled", true);
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
 
     const cooldownMs = cfg.get<number>("cooldownMs", 1200);
     const now = Date.now();
-    if (now - GitEffectsPanel.lastFireMs < cooldownMs) return;
+    if (now - GitEffectsPanel.lastFireMs < cooldownMs) {
+      return;
+    }
     GitEffectsPanel.lastFireMs = now;
 
+    const actionMap = normalizeActionMap(context.globalState.get(ACTION_STATE_KEY));
+    const resolvedPayload: EffectPayload = {
+      ...payload,
+      actionId:
+        payload.actionId ??
+        resolveActionId(payload.kind, payload.event, actionMap),
+    };
+
     const panel = GitEffectsPanel.getOrCreate(context, out);
-    panel.fireEffect(payload, cfg.get<number>("durationMs", 2200));
+    panel.fireEffect(resolvedPayload, cfg.get<number>("durationMs", 2200));
   }
 
   private static getSelectedCharacterId(context: vscode.ExtensionContext) {
@@ -98,7 +115,7 @@ export class GitEffectsPanel {
     this.out.appendLine(
       `[EFFECT] ${payload.kind.toUpperCase()} ${payload.event} :: ${payload.title} :: ${payload.branch ?? "?"} -> ${
         payload.upstream ?? "?"
-      } :: character=${this.characterId}`,
+      } :: character=${this.characterId} action=${payload.actionId ?? "default"}`,
     );
 
     if (this.ready) {

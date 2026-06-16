@@ -1,5 +1,13 @@
 import * as vscode from "vscode";
 import { getCharacterPickerHtml } from "./html";
+import { GitEffectsPanel } from "./GitEffectsPanel";
+import {
+  ACTION_OPTIONS,
+  ACTION_STATE_KEY,
+  ACTION_TARGETS,
+  type ActionMap,
+  normalizeActionMap,
+} from "../effects/actions";
 
 const PANEL_VIEWTYPE = "gitEffectsCharacterPicker";
 const STATE_KEY = "gitEffects.selectedCharacterId";
@@ -56,6 +64,50 @@ export class CharacterPickerPanel {
           return;
         }
 
+        if (type === "applyAction") {
+          const target = String((msg as any).target || "").trim();
+          const actionId = String((msg as any).actionId || "").trim();
+          if (!ACTION_TARGETS.some((item) => item === target)) {
+            return;
+          }
+          if (!ACTION_OPTIONS.some((item) => item.id === actionId)) {
+            return;
+          }
+
+          const actionMap = this.getActionMap();
+          actionMap[target as keyof ActionMap] = actionId as ActionMap[keyof ActionMap];
+          await this.context.globalState.update(ACTION_STATE_KEY, actionMap);
+          this.out.appendLine(`[ACTION] ${target} = ${actionId}`);
+          this.postState();
+
+          vscode.window.setStatusBarMessage(
+            `Git-Effects: ${target} action set to ${actionId}`,
+            1500,
+          );
+          return;
+        }
+
+        if (type === "previewAction") {
+          const target = String((msg as any).target || "manual").trim();
+          const actionId = String((msg as any).actionId || "").trim();
+          const action = ACTION_OPTIONS.find((item) => item.id === actionId);
+          if (!action) {
+            return;
+          }
+
+          this.out.appendLine(`[ACTION] preview ${target} -> ${actionId}`);
+          GitEffectsPanel.fire(this.context, this.out, {
+            kind: actionId === "shakeNo" ? "error" : "info",
+            event: target === "push" || target === "pull" || target === "commit"
+              ? target
+              : "manual",
+            actionId,
+            title: `Preview: ${action.label}`,
+            detail: `${target} action preview`,
+          });
+          return;
+        }
+
         if (type === "close") {
           try {
             this.panel.dispose();
@@ -106,6 +158,8 @@ export class CharacterPickerPanel {
 
     panel.webview.html = getCharacterPickerHtml(panel.webview, context, {
       selected,
+      actionMap: instance.getActionMap(),
+      actionOptions: [...ACTION_OPTIONS],
     });
 
     panel.onDidDispose(() => (CharacterPickerPanel.current = undefined));
@@ -117,7 +171,16 @@ export class CharacterPickerPanel {
   private postState() {
     const selected = (this.context.globalState.get<string>(STATE_KEY) ||
       DEFAULT_CHARACTER_ID) as CharacterId;
-    this.panel.webview.postMessage({ type: "state", selected });
+    this.panel.webview.postMessage({
+      type: "state",
+      selected,
+      actionMap: this.getActionMap(),
+      actionOptions: [...ACTION_OPTIONS],
+    });
+  }
+
+  private getActionMap() {
+    return normalizeActionMap(this.context.globalState.get(ACTION_STATE_KEY));
   }
 
   private async refreshCharacters() {

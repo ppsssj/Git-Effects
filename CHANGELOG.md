@@ -2,6 +2,13 @@
 
 All notable changes to Git Effects are documented here.
 
+## 0.0.9 - 2026-06-16
+
+### Changed
+
+- Restored the README to the existing documentation format.
+- Added the 0.0.8 release notes without replacing the original README structure.
+
 ## 0.0.8 - 2026-06-16
 
 ### Added

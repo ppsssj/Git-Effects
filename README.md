@@ -50,6 +50,11 @@
 
 ## Release / Publish Log
 
+- **v0.0.9 (2026-06-16)** — README 릴리스 문서 정리
+  - Changed:
+    - README를 기존 문서 양식으로 유지하면서 v0.0.8 릴리스 내용만 추가되도록 정리
+    - Marketplace에 표시되는 README 내용이 기존 구조를 유지하도록 재배포
+
 - **v0.0.8 (2026-06-16)** — Git Action별 애니메이션 선택/프리뷰 UX 추가
   - Added:
     - Push/Pull/Commit/Error 이벤트별로 원하는 행동 애니메이션을 지정하는 매핑 기능 추가
